@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Name=dbx-desktop
+Comment=A desktop companion for Databricks
+# The Exec line includes %u to pass the URL to the application
+Exec=/usr/local/bin/dbx-desktop %u
+Terminal=false
+Type=Application
+Icon=dbx-desktop
+Categories=Utility;
+StartupWMClass=dbx-desktop
+
+ 

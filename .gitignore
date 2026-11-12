@@ -1,0 +1,13 @@
+.task
+.wails
+bin
+frontend/dist
+frontend/node_modules
+
+# Local configuration and credentials
+.DS_Store
+.env
+.env.*
+!.env.example
+.databrickscfg
+.databricks/
