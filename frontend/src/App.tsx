@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { WorkspaceService, type AppStatus, type Workspace } from "../bindings/dbx-desktop";
+import { Events } from "@wailsio/runtime";
+import { WorkspaceService, type AppStatus, type Workspace, type Completion } from "../bindings/dbx-desktop";
+import { DesktopSettings } from "./DesktopSettings";
 import { AddWorkspaceDialog, EditWorkspaceDialog, RemoveWorkspaceDialog, SigningInDialog } from "./dialogs";
 import { Overview } from "./Overview";
 import { Profiles } from "./Profiles";
@@ -9,7 +11,7 @@ import { displayName, errorText, shortHost } from "./lib";
 import { CloudStatus, CloudStatusIndicator } from "./status/CloudStatus";
 import { useCloudStatus } from "./status/useCloudStatus";
 
-type View = "overview" | "sql" | "notebooks" | "profiles" | "status";
+type View = "overview" | "sql" | "notebooks" | "profiles" | "status" | "settings";
 
 type Dialog =
   | { kind: "add" }
@@ -27,10 +29,13 @@ export default function App() {
   const [dialog, setDialog] = useState<Dialog>(null);
   const [error, setError] = useState("");
   // Bumped after a sign-in so the overview reloads with the new credentials.
-  const [authEpoch, setAuthEpoch] = useState(0);
+  const [authEpoch, setAuthEpoch] = useState<Record<string, number>>({});
   // The SQL view stays mounted once opened so results survive switching views.
-  const [sqlOpened, setSqlOpened] = useState(false);
-  const [notebooksOpened, setNotebooksOpened] = useState(false);
+  const [sqlOpened, setSqlOpened] = useState<string[]>([]);
+  const [notebooksOpened, setNotebooksOpened] = useState<string[]>([]);
+  const [completion, setCompletion] = useState<Completion | null>(null);
+  const openSQL = (profile: string) => setSqlOpened((xs) => xs.includes(profile) ? xs : [...xs, profile]);
+  const openNotebooks = (profile: string) => setNotebooksOpened((xs) => xs.includes(profile) ? xs : [...xs, profile]);
 
   const reload = useCallback(async () => {
     try {
@@ -48,6 +53,22 @@ export default function App() {
     reload();
   }, [reload]);
 
+  useEffect(() => {
+    const offSettings = Events.On("desktop-settings", () => setView("settings"));
+    const offCompletion = Events.On("completion-open", async (event) => {
+      const c = event.data;
+      if (c.kind !== "sql" && c.kind !== "notebooks") return;
+      try {
+        await WorkspaceService.SetActive(c.profile);
+        await reload();
+        if (c.kind === "sql") openSQL(c.profile); else openNotebooks(c.profile);
+        setCompletion(c);
+        setView(c.kind);
+      } catch (e) { setError(errorText(e)); }
+    });
+    return () => { offSettings(); offCompletion(); };
+  }, [reload]);
+
   const run = async (fn: () => Promise<unknown>) => {
     try {
       await fn();
@@ -61,14 +82,17 @@ export default function App() {
   const activate = (ws: Workspace) =>
     run(async () => {
       await WorkspaceService.SetActive(ws.profile.name);
-      setView((v) => (v === "profiles" || v === "status" ? "overview" : v));
+      setView((v) => (v === "profiles" || v === "status" || v === "settings" ? "overview" : v));
+      // Keep the same view when changing workspaces, without discarding results.
+      if (view === "sql") openSQL(ws.profile.name);
+      if (view === "notebooks") openNotebooks(ws.profile.name);
     });
 
   const signIn = async (ws: Workspace, fn: (profile: string) => Promise<void>) => {
     setDialog({ kind: "signing-in", ws });
     await run(() => fn(ws.profile.name));
     setDialog(null);
-    setAuthEpoch((n) => n + 1);
+    setAuthEpoch((epochs) => ({ ...epochs, [ws.profile.name]: (epochs[ws.profile.name] ?? 0) + 1 }));
   };
 
   const cli = status?.cli;
@@ -90,7 +114,7 @@ export default function App() {
             <button
               key={ws.profile.name}
               className="rail-item"
-              aria-current={ws.active && view !== "profiles" && view !== "status" ? "true" : undefined}
+              aria-current={ws.active && view !== "profiles" && view !== "status" && view !== "settings" ? "true" : undefined}
               title={shortHost(ws.profile.host)}
               onClick={() => activate(ws)}
             >
@@ -112,6 +136,9 @@ export default function App() {
           onClick={() => setView("profiles")}
         >
           <span className="name">Manage profiles</span>
+        </button>
+        <button className="rail-item" aria-current={view === "settings" ? "true" : undefined} onClick={() => setView("settings")}>
+          <span className="name">Settings</span>
         </button>
         <div className="rail-foot">
           {cli ? (cli.found ? `Databricks CLI ${cli.version || ""}` : "Databricks CLI not found") : " "}
@@ -136,7 +163,7 @@ export default function App() {
                   role="tab"
                   aria-selected={view === "sql"}
                   onClick={() => {
-                    setSqlOpened(true);
+                    openSQL(active.profile.name);
                     setView("sql");
                   }}
                 >
@@ -146,7 +173,7 @@ export default function App() {
                   role="tab"
                   aria-selected={view === "notebooks"}
                   onClick={() => {
-                    setNotebooksOpened(true);
+                    openNotebooks(active.profile.name);
                     setView("notebooks");
                   }}
                 >
@@ -161,21 +188,22 @@ export default function App() {
           )}
         </header>
 
-        {active && sqlOpened && (
-          <div className="content flush" hidden={view !== "sql"}>
-            <SqlView key={`${active.profile.name}:${authEpoch}`} workspace={active} visible={view === "sql"} />
+        {workspaces.filter((ws) => sqlOpened.includes(ws.profile.name)).map((ws) => (
+          <div key={`${ws.profile.name}:${authEpoch[ws.profile.name] ?? 0}`} className="content flush" hidden={view !== "sql" || !ws.active}>
+            <SqlView workspace={ws} visible={view === "sql" && ws.active}
+              openRequest={completion?.kind === "sql" && completion.profile === ws.profile.name ? completion : null} />
           </div>
-        )}
+        ))}
 
-        {active && notebooksOpened && (
-          <div className="content flush" hidden={view !== "notebooks"}>
+        {workspaces.filter((ws) => notebooksOpened.includes(ws.profile.name)).map((ws) => (
+          <div key={`${ws.profile.name}:${authEpoch[ws.profile.name] ?? 0}`} className="content flush" hidden={view !== "notebooks" || !ws.active}>
             <NotebookView
-              key={`${active.profile.name}:${authEpoch}`}
-              workspace={active}
-              visible={view === "notebooks"}
+              workspace={ws}
+              visible={view === "notebooks" && ws.active}
+              openRequest={completion?.kind === "notebooks" && completion.profile === ws.profile.name ? completion : null}
             />
           </div>
-        )}
+        ))}
 
         <main className="content" hidden={(view === "sql" || view === "notebooks") && !!active}>
           {cli && !cliReady && (
@@ -215,7 +243,7 @@ export default function App() {
             </div>
           )}
 
-          {view === "status" ? <CloudStatus state={cloudStatus} /> : view === "profiles" ? (
+          {view === "settings" ? <DesktopSettings /> : view === "status" ? <CloudStatus state={cloudStatus} /> : view === "profiles" ? (
             <Profiles
               workspaces={workspaces}
               configPath={status?.configPath ?? ""}
@@ -231,7 +259,7 @@ export default function App() {
             <Overview
               key={active.profile.name}
               workspace={active}
-              authEpoch={authEpoch}
+              authEpoch={authEpoch[active.profile.name] ?? 0}
               onSignIn={(ws) => signIn(ws, WorkspaceService.Reauthenticate)}
             />
           ) : loaded && !active ? (

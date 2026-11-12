@@ -6,11 +6,11 @@ let build = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
 let source = build.appendingPathComponent("appicon.icon/Assets/workspace.svg")
 let foreground = try String(contentsOf: source, encoding: .utf8)
 let artwork = foreground.replacingOccurrences(
-    of: "  <!-- A desktop code workspace, with original rectangular data bricks. -->",
+    of: "  <!-- App icon background. -->",
     with: """
       <title>dbx-desktop</title>
-      <desc>A desktop monitor with red data bricks and a code prompt.</desc>
-      <rect x="64" y="64" width="896" height="896" rx="200" fill="#1B3139"/>
+      <desc>Three rounded pink and red layers on a deep red tile.</desc>
+      <rect x="64" y="64" width="896" height="896" rx="200" fill="#C40012"/>
     """
 )
 let vector = build.appendingPathComponent("appicon.svg")

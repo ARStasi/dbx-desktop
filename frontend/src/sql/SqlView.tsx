@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Events } from "@wailsio/runtime";
-import { SQLService, type QueryTab, type RemoteFile, type Warehouse, type Workspace } from "../../bindings/dbx-desktop";
+import { DesktopService, SQLService, type Completion, type QueryTab, type RemoteFile, type Warehouse, type Workspace } from "../../bindings/dbx-desktop";
 import type { File as QueryFile, HistoryEntry } from "../../bindings/dbx-desktop/internal/queries/models";
 import type { Result } from "../../bindings/dbx-desktop/internal/sqlexec/models";
 import { ConfirmDialog } from "../dialogs";
@@ -74,7 +74,7 @@ function Elapsed(props: { since: number }) {
   return <>{Math.floor((Date.now() - props.since) / 1000)} s</>;
 }
 
-export function SqlView(props: { workspace: Workspace; visible: boolean }) {
+export function SqlView(props: { workspace: Workspace; visible: boolean; openRequest?: Completion | null }) {
   const ws = props.workspace;
   const profile = ws.profile.name;
 
@@ -102,6 +102,8 @@ export function SqlView(props: { workspace: Workspace; visible: boolean }) {
   const editor = useRef<EditorHandle>(null);
   const tabsRef = useRef(tabs);
   tabsRef.current = tabs;
+  const runsRef = useRef(runs);
+  runsRef.current = runs;
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
   const activeTab = tabs.find((t) => t.path === active);
@@ -252,6 +254,10 @@ export function SqlView(props: { workspace: Workspace; visible: boolean }) {
       setNotice(errorText(e));
     }
   }, []);
+
+  useEffect(() => {
+    if (loaded && props.openRequest) openPath(props.openRequest.path);
+  }, [loaded, props.openRequest, openPath]);
 
   const newTab = async () => {
     try {
@@ -481,6 +487,12 @@ export function SqlView(props: { workspace: Workspace; visible: boolean }) {
     });
     loadHistory();
     loadWarehouses();
+    const currentPath = Object.keys(runsRef.current).find((p) => runsRef.current[p].runId === runId) ?? path;
+    const tab = tabsRef.current.find((t) => t.path === currentPath);
+    if (tab) DesktopService.NotifyCompletion({
+      id: runId, kind: "sql", profile, path: currentPath, name: tab.name,
+      status: result.status === "SUCCEEDED" ? "finished" : result.status === "CANCELED" ? "cancelled" : "failed",
+    }).catch(() => {});
   };
 
   const runQuery = () => {

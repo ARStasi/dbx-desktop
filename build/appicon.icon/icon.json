@@ -1,13 +1,13 @@
 {
   "fill": {
-    "solid": "srgb:0.10588,0.19216,0.22353,1.00000"
+    "solid": "srgb:0.76863,0.00000,0.07059,1.00000"
   },
   "groups": [
     {
       "layers": [
         {
           "image-name": "workspace.svg",
-          "name": "Desktop workspace",
+          "name": "Stacked layers",
           "position": {
             "scale": 1.0,
             "translation-in-points": [
@@ -19,7 +19,7 @@
       ],
       "shadow": {
         "kind": "neutral",
-        "opacity": 0.25
+        "opacity": 0.0
       },
       "specular": false,
       "translucency": {

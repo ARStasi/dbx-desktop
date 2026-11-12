@@ -92,6 +92,19 @@ export interface Cluster {
 }
 
 /**
+ * Completion identifies the tab to reopen. SQL, output and error details never
+ * leave the app through a desktop notification.
+ */
+export interface Completion {
+    "id": string;
+    "kind": string;
+    "profile": string;
+    "path": string;
+    "name": string;
+    "status": string;
+}
+
+/**
  * DeleteResult reports which query files were deleted and why others were not.
  */
 export interface DeleteResult {
@@ -101,6 +114,13 @@ export interface DeleteResult {
      * Errors holds one message per file that could not be deleted.
      */
     "errors": string[] | null;
+}
+
+export interface DesktopState {
+    "preferences": settings$0.DesktopPrefs;
+    "notificationsAvailable": boolean;
+    "notificationsAllowed": boolean;
+    "notificationError": string;
 }
 
 /**

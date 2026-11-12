@@ -35,6 +35,37 @@ func TestRoundTrip(t *testing.T) {
 	}
 }
 
+func TestDesktopPreferencesPersistAcrossWorkspaceChanges(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "settings.json")
+	s := New(p)
+	defaults, err := s.Desktop()
+	if err != nil || !defaults.KeepInTray || defaults.Notifications {
+		t.Fatalf("defaults: %+v %v", defaults, err)
+	}
+	want := DesktopPrefs{KeepInTray: false, Notifications: true}
+	if err := s.SetDesktop(want); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetMeta("dev", WorkspaceMeta{Nickname: "Dev"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Forget("dev"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := New(p).Desktop()
+	if err != nil || got != want {
+		t.Fatalf("preferences lost: %+v %v", got, err)
+	}
+	// An explicit false must stay false, including after reopening the store.
+	if err := s.SetDesktop(DesktopPrefs{}); err != nil {
+		t.Fatal(err)
+	}
+	got, err = New(p).Desktop()
+	if err != nil || got != (DesktopPrefs{}) {
+		t.Fatalf("false preferences lost: %+v %v", got, err)
+	}
+}
+
 func TestCorruptFileIsAnError(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "settings.json")
 	os.WriteFile(path, []byte("{not json"), 0o600)

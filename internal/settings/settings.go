@@ -45,6 +45,12 @@ type CatalogPrefs struct {
 	Current string `json:"current,omitempty"`
 }
 
+// DesktopPrefs applies to the whole app, across workspaces.
+type DesktopPrefs struct {
+	KeepInTray    bool `json:"keepInTray"`
+	Notifications bool `json:"notifications"`
+}
+
 type data struct {
 	Active     string                   `json:"active"`
 	Workspaces map[string]WorkspaceMeta `json:"workspaces"`
@@ -55,6 +61,28 @@ type data struct {
 	Catalogs   map[string]CatalogPrefs  `json:"catalogs,omitempty"`
 	Notebooks  map[string]NotebookState `json:"notebooks,omitempty"`
 	CloudWatch map[string][]string      `json:"cloudWatch,omitempty"`
+	Desktop    *DesktopPrefs            `json:"desktop,omitempty"`
+}
+
+func (s *Store) Desktop() (DesktopPrefs, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	d, err := s.read()
+	if d.Desktop == nil {
+		return DesktopPrefs{KeepInTray: true}, err
+	}
+	return *d.Desktop, err
+}
+
+func (s *Store) SetDesktop(p DesktopPrefs) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	d, err := s.read()
+	if err != nil {
+		return err
+	}
+	d.Desktop = &p
+	return s.write(d)
 }
 
 // CloudWatch returns provider IDs mapped to watched region IDs. This is an

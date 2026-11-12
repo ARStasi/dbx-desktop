@@ -1,9 +1,9 @@
 # App icon
 
-The monitor identifies a desktop app, the red rectangular data bricks suggest
-data work, and the prompt identifies a code workspace. The colors match the
-app's Databricks-inspired navy, warm white and lava palette. The artwork is
-original and does not use the Databricks logo.
+Three rounded layers sit on a deep red tile, matching the supplied logo
+reference. The top layer is light pink, the middle layer is coral, and the
+bottom layer is bright red. The foreground is vector artwork so it stays
+sharp at every icon size.
 
 Edit `appicon.icon/Assets/workspace.svg` for the foreground and
 `appicon.icon/icon.json` for the native macOS background and material.

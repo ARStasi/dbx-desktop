@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Events } from "@wailsio/runtime";
 import {
   NotebookService,
+  DesktopService,
+  type Completion,
   type CellRun,
   type Cluster,
   type NotebookTab,
@@ -136,7 +138,7 @@ function failedRun(msg: string): CellRun {
   };
 }
 
-export function NotebookView(props: { workspace: Workspace; visible: boolean }) {
+export function NotebookView(props: { workspace: Workspace; visible: boolean; openRequest?: Completion | null }) {
   const ws = props.workspace;
   const profile = ws.profile.name;
 
@@ -371,6 +373,10 @@ export function NotebookView(props: { workspace: Workspace; visible: boolean }) 
     },
     [profile],
   );
+
+  useEffect(() => {
+    if (loaded && props.openRequest) openPath(props.openRequest.path);
+  }, [loaded, props.openRequest, openPath]);
 
   const newTab = async () => {
     try {
@@ -651,6 +657,8 @@ export function NotebookView(props: { workspace: Workspace; visible: boolean }) 
     });
 
     let stopped = false;
+    let attempted = false;
+    let completionStatus = "finished";
     for (const id of ids) {
       const runId = runIds.get(id)!;
       if (stopped || (stops.current.get(path) ?? 0) !== epoch) {
@@ -665,6 +673,7 @@ export function NotebookView(props: { workspace: Workspace; visible: boolean }) 
         continue;
       }
       if (plan.kind === "pip") {
+        attempted = true;
         let result: CellRun;
         if (target.id !== SERVERLESS) {
           result = failedRun(
@@ -681,15 +690,18 @@ export function NotebookView(props: { workspace: Workspace; visible: boolean }) 
         setRuns((rs) =>
           rs[id]?.runId === runId ? { ...rs, [id]: { ...rs[id], phase: "done", clusterName: "", result } } : rs,
         );
-        if (result.output.status !== "finished") stopped = true;
+        if (result.output.status !== "finished") { stopped = true; completionStatus = result.output.status; }
         continue;
       }
       if (plan.kind === "unsupported") {
+        attempted = true;
+        completionStatus = "failed";
         setRun(id, { runId, phase: "done", startedAt: Date.now(), clusterName: "", result: failedRun(`${plan.magic}: ${plan.reason}`) });
         stopped = true;
         continue;
       }
       setRun(id, { runId, phase: "running", startedAt: Date.now(), clusterName: target.name });
+      attempted = true;
       let result: CellRun;
       try {
         result = await NotebookService.RunCell(profile, target.id, serverlessVersion, path, plan.code, runId);
@@ -710,7 +722,13 @@ export function NotebookView(props: { workspace: Workspace; visible: boolean }) 
         );
       }
       setRuns((rs) => (rs[id]?.runId === runId ? { ...rs, [id]: { ...rs[id], phase: "done", result } } : rs));
-      if (status !== "finished") stopped = true;
+      if (status !== "finished") { stopped = true; completionStatus = status; }
+    }
+    const tab = tabsRef.current.find((t) => t.cells.some((c) => ids.includes(c.id)));
+    if (attempted && tab && (stops.current.get(path) ?? 0) === epoch) {
+      DesktopService.NotifyCompletion({
+        id: runIds.get(ids[0])!, kind: "notebooks", profile, path: tab.path, name: tab.name, status: completionStatus,
+      }).catch(() => {});
     }
   };
 

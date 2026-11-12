@@ -16,6 +16,7 @@ var assets embed.FS
 func init() {
 	// Sent to the frontend with the paths of files dropped onto the window.
 	application.RegisterEvent[[]string]("files-dropped")
+	application.RegisterEvent[Completion]("completion-open")
 }
 
 func main() {
@@ -31,11 +32,16 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	desktop, err := NewDesktopService(workspaces.store)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	app := application.New(application.Options{
 		Name:        "dbx-desktop",
 		Description: "A desktop companion for Databricks",
 		Services: []application.Service{
+			application.NewService(desktop),
 			application.NewService(workspaces),
 			application.NewService(sqlService),
 			application.NewService(notebooks),
@@ -45,7 +51,9 @@ func main() {
 			Handler: application.AssetFileServerFS(assets),
 		},
 		Mac: application.MacOptions{
-			ApplicationShouldTerminateAfterLastWindowClosed: true,
+			// DesktopService handles close vs. quit. macOS can otherwise
+			// terminate the app when its last window is ordered out.
+			ApplicationShouldTerminateAfterLastWindowClosed: false,
 		},
 	})
 
@@ -63,6 +71,7 @@ func main() {
 		URL:              "/",
 		EnableFileDrop:   true,
 	})
+	desktop.attach(app, window)
 
 	// The webview cannot see the real paths of dropped files, so the window
 	// reports them and the frontend decides what to do with them.

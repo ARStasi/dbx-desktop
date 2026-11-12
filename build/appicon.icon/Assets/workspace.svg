@@ -1,13 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <!-- A desktop code workspace, with original rectangular data bricks. -->
-  <g fill="none" stroke="#F9F7F4" stroke-width="40" stroke-linejoin="round">
-    <rect x="200" y="246" width="624" height="432" rx="44"/>
-    <path d="M512 698v94M388 792h248" stroke-linecap="round"/>
+  <!-- App icon background. -->
+  <g transform="translate(3.83 0.58) scale(0.813067)">
+    <path d="M346 755 588 884Q624 905 660 884L898 755 953 784C991 804 991 842 953 862L660 1024Q624 1044 588 1024L285 862C247 842 247 804 285 784Z" fill="#FF1D2B"/>
+    <path d="M346 575 588 704Q624 724 660 704L898 575 953 605C991 625 991 663 953 683L660 846Q624 866 588 846L285 683C247 663 247 625 285 605Z" fill="#FF434C"/>
+    <path d="M589 276C610 264 636 264 658 276L948 430C986 450 986 487 948 507L658 663C636 676 610 676 588 663L292 507C255 487 255 450 292 430Z" fill="#FF7B82"/>
   </g>
-  <g fill="#FF3621">
-    <rect x="352" y="324" width="112" height="88" rx="4"/>
-    <rect x="384" y="424" width="112" height="88" rx="4"/>
-    <rect x="352" y="524" width="112" height="88" rx="4"/>
-  </g>
-  <path d="m626 414 48 48-48 48" fill="none" stroke="#F9F7F4" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

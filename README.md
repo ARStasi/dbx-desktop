@@ -20,6 +20,15 @@ Cloud status is available from the sidebar, including before adding a workspace:
 - Inspect each region's services, active incidents and scheduled maintenance, or open the official Databricks status page
 - Choices persist in app settings. Public status feeds refresh every five minutes without workspace credentials. Failed checks keep the last details visible but mark them unavailable
 
+Desktop settings are available from the sidebar and tray menu:
+
+- **Keep running in system tray when closed** is on by default. Closing the window hides it, preserving running queries, notebook run chains, results and Python sessions. Open it again from the Windows system tray or macOS menu bar. Choose **Quit dbx-desktop** in that menu to exit and end notebook sessions. Turn the setting off to make closing the window quit
+- Enable **Notify when queries and notebook runs finish** to request system notification permission. Notifications report success or failure while the app is in the background; cancelled runs stay silent. Run all and Run from here send one notification when the chain ends, rather than one per cell
+- Clicking a completion notification opens the original workspace and tab. Opened SQL and notebook views retain results when switching workspaces. Notification text contains the profile and filename, without SQL, results or error details
+- **Send test notification** checks delivery even while the app is focused. System notification and Focus settings still apply. macOS notifications require a packaged, signed app; an unavailable notification service does not prevent using the rest of the app
+
+Desktop validation: an isolated macOS app with a simulated Databricks API kept a query running after closing the window, restored its result, retained it across workspace switches, and exited on close when the tray setting was off. Notification permission was rejected for the temporary ad-hoc-signed bundle; actual delivery and clicking a system notification still need a signed-build check. Notification routing, focus suppression, cancellation and permission failures have automated coverage. The Windows build compiles, but tray behavior and notification delivery have not been checked on Windows.
+
 Pillar 2, the SQL scratchpad, is built:
 
 - Query tabs backed by plain `.sql` files, saved automatically, in `Documents/dbx-desktop/<profile>/` by default
@@ -83,6 +92,7 @@ DATABRICKS_CONFIG_FILE=/tmp/test.databrickscfg DBX_DESKTOP_CONFIG_DIR=/tmp/dbx-d
 | Path | What it holds |
 |---|---|
 | `main.go` | App entry point and window setup |
+| `desktopservice.go`, `trayicon.go` | Tray menu, close behavior, desktop preferences and native completion notifications |
 | `workspaceservice.go` | The service the frontend calls: profiles, sign-in, overview |
 | `cloudstatusservice.go`, `internal/cloudstatus` | Public Databricks status feeds, regional health and watched regions |
 | `internal/dbcfg` | Reads and writes `~/.databrickscfg`, with a `.bak` backup on every write |

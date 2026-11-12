@@ -17,6 +17,14 @@ export interface CatalogPrefs {
 }
 
 /**
+ * DesktopPrefs applies to the whole app, across workspaces.
+ */
+export interface DesktopPrefs {
+    "keepInTray": boolean;
+    "notifications": boolean;
+}
+
+/**
  * WorkspaceMeta is the app's own metadata for one profile.
  */
 export interface WorkspaceMeta {

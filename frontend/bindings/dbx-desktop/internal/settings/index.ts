@@ -3,5 +3,6 @@
 
 export type {
     CatalogPrefs,
+    DesktopPrefs,
     WorkspaceMeta
 } from "./models.js";

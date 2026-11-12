@@ -48,7 +48,8 @@ It is not a replica of the Databricks web UI. It covers a chosen set of features
 - Workspaces can be flagged as production. Destructive or costly actions need confirmation everywhere, with a stricter check on prod-flagged workspaces.
 - The app talks only to the user's Databricks workspace hosts. No telemetry, no third-party network calls.
 - The app keeps no credential store of its own.
-- Refresh by polling about once a minute while the window is open. No background process after the window closes.
+- Refresh by polling about once a minute while the app is running. The app-wide "Keep running in system tray when closed" setting is on by default. Closing hides the existing window and preserves running work; turning it off makes closing quit. Quit always exits and ends notebook sessions. This supersedes the original no-background-process decision.
+- Completion notifications are opt-in and require system permission. Notify when SQL statements or notebook run chains succeed or fail while the app is in the background. Cancellations stay silent. Clicking a notification opens its workspace and tab.
 
 ## v1 pillars, in build order
 
@@ -93,7 +94,6 @@ After pillars 1 and 2, the author uses the app for a week on the Windows work la
 
 - v1.1: run a local `.py` file or notebook as a one-time serverless job, with logs streamed back
 - v2, first item: cost, permissions and governance views built on system tables
-- Menu-bar or tray presence
 - SQL autocomplete, charts, query parameters
 - Excel import
 - Declarative Automation Bundles support
