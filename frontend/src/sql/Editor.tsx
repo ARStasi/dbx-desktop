@@ -38,7 +38,7 @@ const dialect = SQLDialect.define({
 });
 
 // Colors come from CSS variables so the editor follows light and dark mode.
-const theme = EditorView.theme({
+export const theme = EditorView.theme({
   "&": { height: "100%", fontSize: "13px", backgroundColor: "var(--surface)", color: "var(--text)" },
   "&.cm-focused": { outline: "none" },
   ".cm-scroller": {
@@ -56,7 +56,7 @@ const theme = EditorView.theme({
   ".cm-matchingBracket": { backgroundColor: "color-mix(in srgb, var(--focus) 25%, transparent)", outline: "none" },
 });
 
-const highlight = HighlightStyle.define([
+export const highlight = HighlightStyle.define([
   { tag: [t.keyword, t.operatorKeyword], color: "var(--syn-keyword)", fontWeight: "600" },
   { tag: [t.string, t.special(t.string)], color: "var(--syn-string)" },
   { tag: [t.number, t.bool, t.null], color: "var(--syn-number)" },

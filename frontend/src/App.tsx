@@ -3,10 +3,13 @@ import { WorkspaceService, type AppStatus, type Workspace } from "../bindings/db
 import { AddWorkspaceDialog, EditWorkspaceDialog, RemoveWorkspaceDialog, SigningInDialog } from "./dialogs";
 import { Overview } from "./Overview";
 import { Profiles } from "./Profiles";
+import { NotebookView } from "./notebook/NotebookView";
 import { SqlView } from "./sql/SqlView";
 import { displayName, errorText, shortHost } from "./lib";
+import { CloudStatus, CloudStatusIndicator } from "./status/CloudStatus";
+import { useCloudStatus } from "./status/useCloudStatus";
 
-type View = "overview" | "sql" | "profiles";
+type View = "overview" | "sql" | "notebooks" | "profiles" | "status";
 
 type Dialog =
   | { kind: "add" }
@@ -16,6 +19,7 @@ type Dialog =
   | null;
 
 export default function App() {
+  const cloudStatus = useCloudStatus();
   const [status, setStatus] = useState<AppStatus | null>(null);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -26,6 +30,7 @@ export default function App() {
   const [authEpoch, setAuthEpoch] = useState(0);
   // The SQL view stays mounted once opened so results survive switching views.
   const [sqlOpened, setSqlOpened] = useState(false);
+  const [notebooksOpened, setNotebooksOpened] = useState(false);
 
   const reload = useCallback(async () => {
     try {
@@ -56,7 +61,7 @@ export default function App() {
   const activate = (ws: Workspace) =>
     run(async () => {
       await WorkspaceService.SetActive(ws.profile.name);
-      setView((v) => (v === "profiles" ? "overview" : v));
+      setView((v) => (v === "profiles" || v === "status" ? "overview" : v));
     });
 
   const signIn = async (ws: Workspace, fn: (profile: string) => Promise<void>) => {
@@ -85,7 +90,7 @@ export default function App() {
             <button
               key={ws.profile.name}
               className="rail-item"
-              aria-current={ws.active && view !== "profiles" ? "true" : undefined}
+              aria-current={ws.active && view !== "profiles" && view !== "status" ? "true" : undefined}
               title={shortHost(ws.profile.host)}
               onClick={() => activate(ws)}
             >
@@ -100,6 +105,7 @@ export default function App() {
           </button>
         </div>
         <div className="rail-spacer" />
+        <CloudStatusIndicator state={cloudStatus} active={view === "status"} onOpen={() => setView("status")} />
         <button
           className="rail-item"
           aria-current={view === "profiles" ? "true" : undefined}
@@ -136,6 +142,16 @@ export default function App() {
                 >
                   SQL
                 </button>
+                <button
+                  role="tab"
+                  aria-selected={view === "notebooks"}
+                  onClick={() => {
+                    setNotebooksOpened(true);
+                    setView("notebooks");
+                  }}
+                >
+                  Notebooks
+                </button>
               </div>
             </>
           ) : (
@@ -151,7 +167,17 @@ export default function App() {
           </div>
         )}
 
-        <main className="content" hidden={view === "sql" && !!active}>
+        {active && notebooksOpened && (
+          <div className="content flush" hidden={view !== "notebooks"}>
+            <NotebookView
+              key={`${active.profile.name}:${authEpoch}`}
+              workspace={active}
+              visible={view === "notebooks"}
+            />
+          </div>
+        )}
+
+        <main className="content" hidden={(view === "sql" || view === "notebooks") && !!active}>
           {cli && !cliReady && (
             <div className="page" style={{ marginBottom: 18 }}>
               <div className="notice" role="status">
@@ -189,7 +215,7 @@ export default function App() {
             </div>
           )}
 
-          {view === "profiles" ? (
+          {view === "status" ? <CloudStatus state={cloudStatus} /> : view === "profiles" ? (
             <Profiles
               workspaces={workspaces}
               configPath={status?.configPath ?? ""}

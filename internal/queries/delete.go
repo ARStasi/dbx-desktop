@@ -19,8 +19,11 @@ func HasTrash() bool { return moveToTrash != nil }
 // Delete moves a query file that lives directly in dir to the trash, or
 // removes it where there is no trash. Files elsewhere are refused, so a
 // caller cannot be talked into deleting arbitrary paths.
-func Delete(dir, path string) error {
-	if err := checkSQLPath(path); err != nil {
+func Delete(dir, path string) error { return DeleteExt(dir, path, SQL) }
+
+// DeleteExt is Delete for files with extension ext.
+func DeleteExt(dir, path, ext string) error {
+	if err := checkPath(path, ext); err != nil {
 		return err
 	}
 	if filepath.Clean(filepath.Dir(path)) != filepath.Clean(dir) {

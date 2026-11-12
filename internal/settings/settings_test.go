@@ -43,6 +43,27 @@ func TestCorruptFileIsAnError(t *testing.T) {
 	}
 }
 
+func TestCloudWatchSurvivesWorkspaceChanges(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	s := New(path)
+	if err := s.SetCloudWatch(map[string][]string{"aws": {"east", "west"}, "azure": {"central"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetMeta("dev", WorkspaceMeta{Nickname: "Dev"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetSQL("dev", SQLState{WarehouseID: "wh"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Forget("dev"); err != nil {
+		t.Fatal(err)
+	}
+	watch, err := New(path).CloudWatch()
+	if err != nil || len(watch["aws"]) != 2 || len(watch["azure"]) != 1 {
+		t.Fatalf("watch preferences lost: %v %v", watch, err)
+	}
+}
+
 func TestSQLState(t *testing.T) {
 	s := New(filepath.Join(t.TempDir(), "settings.json"))
 	st, dir, err := s.SQL("dev")

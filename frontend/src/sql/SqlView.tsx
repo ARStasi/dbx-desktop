@@ -908,10 +908,10 @@ export function SqlView(props: { workspace: Workspace; visible: boolean }) {
       {ask?.kind === "save" && (
         <SaveToWorkspaceDialog
           profile={profile}
-          localPath={ask.path}
           defaultName={ask.name}
           onClose={() => setAsk(null)}
-          onSaved={(t) => {
+          onSave={async (folder, name) => {
+            const t = await SQLService.SaveToWorkspace(profile, ask.path, folder, name);
             const oldPath = ask.path;
             setAsk(null);
             moveTab(oldPath, toTab(t));
@@ -993,17 +993,19 @@ export function SqlView(props: { workspace: Workspace; visible: boolean }) {
   );
 }
 
-function DeleteDialog(props: {
+export function DeleteDialog(props: {
   paths: string[];
   names: string[];
   /** How many of the files are open in tabs. */
   open: number;
   trash: boolean;
+  /** Plural noun for several files, such as "scratch notebooks". */
+  plural?: string;
   onConfirm: () => void;
   onClose: () => void;
 }) {
   const n = props.paths.length;
-  const what = n === 1 ? props.names[0] : `${n} scratch files`;
+  const what = n === 1 ? props.names[0] : `${n} ${props.plural ?? "scratch files"}`;
   const shown = props.names.slice(0, 8);
   return (
     <ConfirmDialog

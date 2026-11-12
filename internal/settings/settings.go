@@ -27,6 +27,16 @@ type SQLState struct {
 	ActiveTab   string   `json:"activeTab"`
 }
 
+// NotebookState is what the notebook view remembers for one profile.
+type NotebookState struct {
+	// ClusterID is the chosen compute: a cluster ID, or "serverless".
+	ClusterID string `json:"clusterId"`
+	// ServerlessVersion is the serverless environment version, 0 for the default.
+	ServerlessVersion int      `json:"serverlessVersion,omitempty"`
+	Tabs              []string `json:"tabs"`
+	ActiveTab         string   `json:"activeTab"`
+}
+
 // CatalogPrefs is how the catalog browser is set up for one profile.
 type CatalogPrefs struct {
 	// Visible lists the catalogs to show. Empty means all of them.
@@ -40,9 +50,34 @@ type data struct {
 	Workspaces map[string]WorkspaceMeta `json:"workspaces"`
 	// QueriesDir is the folder new query files are created in. Empty means
 	// the default, Documents/dbx-desktop.
-	QueriesDir string                  `json:"queriesDir,omitempty"`
-	SQL        map[string]SQLState     `json:"sql,omitempty"`
-	Catalogs   map[string]CatalogPrefs `json:"catalogs,omitempty"`
+	QueriesDir string                   `json:"queriesDir,omitempty"`
+	SQL        map[string]SQLState      `json:"sql,omitempty"`
+	Catalogs   map[string]CatalogPrefs  `json:"catalogs,omitempty"`
+	Notebooks  map[string]NotebookState `json:"notebooks,omitempty"`
+	CloudWatch map[string][]string      `json:"cloudWatch,omitempty"`
+}
+
+// CloudWatch returns provider IDs mapped to watched region IDs. This is an
+// app-wide preference and does not depend on the active workspace.
+func (s *Store) CloudWatch() (map[string][]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	d, err := s.read()
+	if d.CloudWatch == nil {
+		d.CloudWatch = map[string][]string{}
+	}
+	return d.CloudWatch, err
+}
+
+func (s *Store) SetCloudWatch(watch map[string][]string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	d, err := s.read()
+	if err != nil {
+		return err
+	}
+	d.CloudWatch = watch
+	return s.write(d)
 }
 
 // Store is a JSON file in the per-user config folder.
@@ -69,7 +104,12 @@ func DefaultPath() (string, error) {
 func New(path string) *Store { return &Store{path: path} }
 
 func (s *Store) read() (data, error) {
-	d := data{Workspaces: map[string]WorkspaceMeta{}, SQL: map[string]SQLState{}, Catalogs: map[string]CatalogPrefs{}}
+	d := data{
+		Workspaces: map[string]WorkspaceMeta{},
+		SQL:        map[string]SQLState{},
+		Catalogs:   map[string]CatalogPrefs{},
+		Notebooks:  map[string]NotebookState{},
+	}
 	b, err := os.ReadFile(s.path)
 	if errors.Is(err, os.ErrNotExist) {
 		return d, nil
@@ -88,6 +128,9 @@ func (s *Store) read() (data, error) {
 	}
 	if d.Catalogs == nil {
 		d.Catalogs = map[string]CatalogPrefs{}
+	}
+	if d.Notebooks == nil {
+		d.Notebooks = map[string]NotebookState{}
 	}
 	return d, nil
 }
@@ -153,6 +196,7 @@ func (s *Store) Forget(profile string) error {
 	delete(d.Workspaces, profile)
 	delete(d.SQL, profile)
 	delete(d.Catalogs, profile)
+	delete(d.Notebooks, profile)
 	if d.Active == profile {
 		d.Active = ""
 	}
@@ -201,5 +245,26 @@ func (s *Store) SetCatalogs(profile string, p CatalogPrefs) error {
 	} else {
 		d.Catalogs[profile] = p
 	}
+	return s.write(d)
+}
+
+// Notebooks returns the notebook view state for a profile and the queries
+// folder override, which is empty when the default applies.
+func (s *Store) Notebooks(profile string) (NotebookState, string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	d, err := s.read()
+	return d.Notebooks[profile], d.QueriesDir, err
+}
+
+// SetNotebooks saves the notebook view state for a profile.
+func (s *Store) SetNotebooks(profile string, st NotebookState) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	d, err := s.read()
+	if err != nil {
+		return err
+	}
+	d.Notebooks[profile] = st
 	return s.write(d)
 }

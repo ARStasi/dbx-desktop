@@ -27,6 +27,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	notebooks, err := NewNotebookService(workspaces)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	app := application.New(application.Options{
 		Name:        "dbx-desktop",
@@ -34,6 +38,8 @@ func main() {
 		Services: []application.Service{
 			application.NewService(workspaces),
 			application.NewService(sqlService),
+			application.NewService(notebooks),
+			application.NewService(NewCloudStatusService(workspaces)),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),

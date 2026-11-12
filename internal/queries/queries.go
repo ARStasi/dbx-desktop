@@ -56,12 +56,22 @@ func safeName(name string) string {
 	return name
 }
 
-func checkSQLPath(path string) error {
+// SQL and Notebook are the file extensions the app edits: SQL queries and
+// Python notebooks in Databricks source format.
+const (
+	SQL      = ".sql"
+	Notebook = ".py"
+)
+
+func checkPath(path, ext string) error {
 	if !filepath.IsAbs(path) {
 		return errors.New("the file path must be absolute")
 	}
-	if !strings.EqualFold(filepath.Ext(path), ".sql") {
-		return errors.New("only .sql files can be opened in the scratchpad")
+	if !strings.EqualFold(filepath.Ext(path), ext) {
+		if ext == SQL {
+			return errors.New("only .sql files can be opened in the scratchpad")
+		}
+		return fmt.Errorf("only %s files can be opened here", ext)
 	}
 	return nil
 }
@@ -76,7 +86,10 @@ func fileInfo(path string) (File, error) {
 
 // List returns the .sql files in dir, newest first. A missing folder is an
 // empty list.
-func List(dir string) ([]File, error) {
+func List(dir string) ([]File, error) { return ListExt(dir, SQL) }
+
+// ListExt returns the files in dir with extension ext, newest first.
+func ListExt(dir, ext string) ([]File, error) {
 	entries, err := os.ReadDir(dir)
 	if errors.Is(err, os.ErrNotExist) {
 		return []File{}, nil
@@ -86,7 +99,7 @@ func List(dir string) ([]File, error) {
 	}
 	files := []File{}
 	for _, e := range entries {
-		if e.IsDir() || !strings.EqualFold(filepath.Ext(e.Name()), ".sql") {
+		if e.IsDir() || !strings.EqualFold(filepath.Ext(e.Name()), ext) {
 			continue
 		}
 		if f, err := fileInfo(filepath.Join(dir, e.Name())); err == nil {
@@ -98,8 +111,11 @@ func List(dir string) ([]File, error) {
 }
 
 // Read returns the content of a .sql file.
-func Read(path string) (string, error) {
-	if err := checkSQLPath(path); err != nil {
+func Read(path string) (string, error) { return ReadExt(path, SQL) }
+
+// ReadExt returns the content of a file that must have extension ext.
+func ReadExt(path, ext string) (string, error) {
+	if err := checkPath(path, ext); err != nil {
 		return "", err
 	}
 	st, err := os.Stat(path)
@@ -117,14 +133,18 @@ func Read(path string) (string, error) {
 }
 
 // Write saves content to a .sql file, replacing it atomically.
-func Write(path, content string) error {
-	if err := checkSQLPath(path); err != nil {
+func Write(path, content string) error { return WriteExt(path, SQL, content) }
+
+// WriteExt saves content to a file that must have extension ext, replacing
+// it atomically.
+func WriteExt(path, ext, content string) error {
+	if err := checkPath(path, ext); err != nil {
 		return err
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".tmp-*.sql")
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".tmp-*"+ext)
 	if err != nil {
 		return err
 	}
@@ -148,12 +168,16 @@ func Write(path, content string) error {
 }
 
 // NewUntitled creates an empty Untitled-N.sql in dir, using the first free N.
-func NewUntitled(dir string) (File, error) {
+func NewUntitled(dir string) (File, error) { return NewUntitledExt(dir, SQL, "") }
+
+// NewUntitledExt creates Untitled-N<ext> in dir holding content, using the
+// first free N.
+func NewUntitledExt(dir, ext, content string) (File, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return File{}, err
 	}
 	for i := 1; i < 10000; i++ {
-		path := filepath.Join(dir, fmt.Sprintf("Untitled-%d.sql", i))
+		path := filepath.Join(dir, fmt.Sprintf("Untitled-%d%s", i, ext))
 		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
 		if errors.Is(err, os.ErrExist) {
 			continue
@@ -161,16 +185,26 @@ func NewUntitled(dir string) (File, error) {
 		if err != nil {
 			return File{}, err
 		}
-		f.Close()
+		_, werr := f.WriteString(content)
+		if cerr := f.Close(); werr == nil {
+			werr = cerr
+		}
+		if werr != nil {
+			return File{}, werr
+		}
 		return fileInfo(path)
 	}
-	return File{}, errors.New("too many untitled queries in this folder")
+	return File{}, errors.New("too many untitled files in this folder")
 }
 
 // Rename gives a query file a new name in the same folder. It refuses to
 // overwrite an existing file.
-func Rename(path, newName string) (File, error) {
-	if err := checkSQLPath(path); err != nil {
+func Rename(path, newName string) (File, error) { return RenameExt(path, SQL, newName) }
+
+// RenameExt renames a file with extension ext within its folder, adding ext
+// to the new name when missing. It refuses to overwrite an existing file.
+func RenameExt(path, ext, newName string) (File, error) {
+	if err := checkPath(path, ext); err != nil {
 		return File{}, err
 	}
 	newName = strings.TrimSpace(newName)
@@ -180,8 +214,8 @@ func Rename(path, newName string) (File, error) {
 	if newName != safeName(newName) || strings.ContainsAny(newName, `/\`) {
 		return File{}, errors.New(`the file name cannot contain any of < > : " / \ | ? *`)
 	}
-	if !strings.EqualFold(filepath.Ext(newName), ".sql") {
-		newName += ".sql"
+	if !strings.EqualFold(filepath.Ext(newName), ext) {
+		newName += ext
 	}
 	dst := filepath.Join(filepath.Dir(path), newName)
 	if dst == path {

@@ -28,3 +28,10 @@ export function suggestedName(fileName: string): string {
   const base = fileName.replace(/\.sql$/i, "");
   return /^Untitled-\d+$/.test(base) ? "" : base;
 }
+
+/** The notebook name a typed name is saved as: trimmed, without a .py extension. Empty if unusable. */
+export function notebookName(name: string): string {
+  const n = name.trim().replace(/\.py$/i, "").trim();
+  if (!n || n === "." || n === ".." || /[/\\]/.test(n)) return "";
+  return n;
+}

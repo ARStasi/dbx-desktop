@@ -99,3 +99,37 @@ func TestIndexKeepsNewest(t *testing.T) {
 		t.Errorf("kept %d links, oldest %q", len(recent), recent[len(recent)-1].RemotePath)
 	}
 }
+
+func TestNotebookMirrorPaths(t *testing.T) {
+	m := NewNotebooks(t.TempDir())
+	local, err := m.LocalPath("/Users/me@example.com/etl/load orders")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Base(local) != "load orders.py" {
+		t.Fatalf("local copy %s", local)
+	}
+	if _, err := New(t.TempDir()).LocalPath("/Users/me/nb"); err == nil {
+		t.Fatal("the SQL mirror should refuse a path without .sql")
+	}
+}
+
+func TestJoinNotebookName(t *testing.T) {
+	cases := map[string]string{
+		"daily":     "/Users/me/daily",
+		"daily.py":  "/Users/me/daily",
+		" daily.PY": "/Users/me/daily",
+		"v1.2 test": "/Users/me/v1.2 test",
+	}
+	for in, want := range cases {
+		got, err := JoinNotebookName("/Users/me/", in)
+		if err != nil || got != want {
+			t.Errorf("%q: got %q, %v; want %q", in, got, err, want)
+		}
+	}
+	for _, bad := range []string{"", ".py", "a/b", `a\b`, ".."} {
+		if _, err := JoinNotebookName("/Users/me", bad); err == nil {
+			t.Errorf("%q should be refused", bad)
+		}
+	}
+}

@@ -6,6 +6,7 @@ import (
 	"github.com/databricks/databricks-sdk-go/client"
 	"github.com/databricks/databricks-sdk-go/config"
 	"github.com/databricks/databricks-sdk-go/service/catalog"
+	"github.com/databricks/databricks-sdk-go/service/compute"
 	"github.com/databricks/databricks-sdk-go/service/iam"
 	"github.com/databricks/databricks-sdk-go/service/jobs"
 	"github.com/databricks/databricks-sdk-go/service/sql"
@@ -24,6 +25,7 @@ type apiClients struct {
 	schemas    *catalog.SchemasAPI
 	tables     *catalog.TablesAPI
 	workspace  *workspace.WorkspaceAPI
+	clusters   *compute.ClustersAPI
 }
 
 // clientPool caches one set of API clients per profile, shared by services.
@@ -66,6 +68,7 @@ func (p *clientPool) get(profile string) (*apiClients, error) {
 		schemas:    catalog.NewSchemas(api),
 		tables:     catalog.NewTables(api),
 		workspace:  workspace.NewWorkspace(api),
+		clusters:   compute.NewClusters(api),
 	}
 	p.clients[profile] = c
 	return c, nil

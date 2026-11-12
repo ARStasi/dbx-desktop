@@ -41,6 +41,8 @@ export function ScratchPanel(props: {
   current?: string;
   onOpen: (path: string) => void;
   onDelete: (paths: string[]) => void;
+  /** Shown when there are no files. */
+  empty?: string;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const anchor = useRef<string | null>(null);
@@ -94,7 +96,9 @@ export function ScratchPanel(props: {
   };
 
   if (props.files.length === 0) {
-    return <div className="tree-note">No scratch queries yet. Use ＋ above the editor to start one.</div>;
+    return (
+      <div className="tree-note">{props.empty ?? "No scratch queries yet. Use ＋ above the editor to start one."}</div>
+    );
   }
 
   return (

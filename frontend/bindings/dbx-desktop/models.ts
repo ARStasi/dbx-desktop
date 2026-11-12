@@ -9,6 +9,9 @@ import * as dbcfg$0 from "./internal/dbcfg/models.js";
 import * as dbcli$0 from "./internal/dbcli/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as nbexec$0 from "./internal/nbexec/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as queries$0 from "./internal/queries/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -21,6 +24,71 @@ export interface AppStatus {
     "cli": dbcli$0.Info;
     "configPath": string;
     "palette": string[] | null;
+}
+
+/**
+ * CellRun is the result of running one cell.
+ */
+export interface CellRun {
+    "output": nbexec$0.Output;
+
+    /**
+     * Started is true when this run began a new Python session.
+     */
+    "started": boolean;
+
+    /**
+     * Lost is true when the notebook's previous session had ended on the
+     * cluster, so variables from earlier cells are gone.
+     */
+    "lost": boolean;
+
+    /**
+     * NotRunning is set when the cluster is not running, with its state.
+     */
+    "notRunning": string;
+
+    /**
+     * NeedsSetup is set when serverless was chosen but its local Python
+     * environment is not set up yet.
+     */
+    "needsSetup": boolean;
+}
+
+/**
+ * Cluster is an all-purpose cluster notebooks can run on.
+ */
+export interface Cluster {
+    "id": string;
+    "name": string;
+    "state": string;
+    "stateMessage": string;
+
+    /**
+     * Runtime is the Databricks Runtime version key, such as 15.4.x-scala2.12.
+     */
+    "runtime": string;
+
+    /**
+     * AccessMode is the data_security_mode, such as USER_ISOLATION.
+     */
+    "accessMode": string;
+
+    /**
+     * SingleUser is who a dedicated cluster is assigned to.
+     */
+    "singleUser": string;
+    "creator": string;
+
+    /**
+     * Workers describes the size, such as "2–8 workers" or "Single node".
+     */
+    "workers": string;
+
+    /**
+     * AutoStopMinutes is the inactivity timeout, 0 when it never stops.
+     */
+    "autoStopMinutes": number;
 }
 
 /**
@@ -45,6 +113,53 @@ export interface FailedRun {
     "message": string;
     "endTime": number;
     "url": string;
+}
+
+/**
+ * NotebookTab is an open notebook file with its content.
+ */
+export interface NotebookTab {
+    "file": queries$0.File;
+    "content": string;
+
+    /**
+     * Remote is set when the file is the local copy of a workspace notebook.
+     */
+    "remote"?: RemoteFile | null;
+}
+
+/**
+ * NotebookViewState is what the notebook view restores when it opens.
+ */
+export interface NotebookViewState {
+    /**
+     * Dir is the folder new notebooks are created in for this workspace.
+     */
+    "dir": string;
+
+    /**
+     * ClusterID is the chosen compute: a cluster ID, or "serverless".
+     */
+    "clusterId": string;
+
+    /**
+     * ServerlessVersion is the serverless environment version to use.
+     */
+    "serverlessVersion": number;
+    "tabs": NotebookTab[] | null;
+    "activeTab": string;
+
+    /**
+     * Trash is true when deleted notebooks go to the system trash.
+     */
+    "trash": boolean;
+
+    /**
+     * Sessions maps each open notebook with a live Python session to the
+     * cluster it runs on, or "serverless". Sessions outlive the view, so they survive
+     * switching views or workspaces until the app quits.
+     */
+    "sessions": { [_ in string]?: string } | null;
 }
 
 /**
@@ -143,6 +258,41 @@ export interface SQLWorkspaceState {
      * Trash is true when deleted query files go to the system trash.
      */
     "trash": boolean;
+}
+
+/**
+ * ServerlessEnvironment describes the local environment for a serverless
+ * environment version.
+ */
+export interface ServerlessEnvironment {
+    "version": number;
+    "dir": string;
+
+    /**
+     * Ready is true once the environment has been set up.
+     */
+    "ready": boolean;
+
+    /**
+     * Python and Connect are the installed versions, when Ready.
+     */
+    "python": string;
+    "connect": string;
+
+    /**
+     * UV is the uv executable used to set it up, or "" when uv is missing.
+     */
+    "uv": string;
+
+    /**
+     * InstallUV holds commands that install uv on this system.
+     */
+    "installUv": string[] | null;
+
+    /**
+     * Versions lists the versions that can be chosen.
+     */
+    "versions": number[] | null;
 }
 
 /**

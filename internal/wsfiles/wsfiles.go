@@ -1,5 +1,5 @@
-// Package wsfiles keeps local copies of SQL files saved in a Databricks
-// workspace. Each copy is a plain .sql file the scratchpad edits and saves
+// Package wsfiles keeps local copies of SQL files and Python notebooks saved
+// in a Databricks workspace. Each copy is a plain .sql file the scratchpad edits and saves
 // locally as usual; an index records which workspace file it came from and
 // what that file looked like when it was last downloaded or uploaded, so the
 // app can tell local edits apart from changes made in Databricks.
@@ -44,12 +44,61 @@ type index struct {
 // Mirror holds one workspace's local copies under a root folder.
 type Mirror struct {
 	root string
-	mu   sync.Mutex
+	// notebooks is set for a mirror of notebooks, whose workspace paths have
+	// no extension and whose local copies are .py source files.
+	notebooks bool
+	mu        sync.Mutex
 }
 
-// New returns the mirror rooted at root. Nothing is created until a file is
-// written.
+// New returns the mirror of .sql files rooted at root. Nothing is created
+// until a file is written.
 func New(root string) *Mirror { return &Mirror{root: root} }
+
+// NewNotebooks returns the mirror of Python notebooks rooted at root.
+func NewNotebooks(root string) *Mirror { return &Mirror{root: root, notebooks: true} }
+
+// NotebookExt is the extension of a notebook's local copy.
+const NotebookExt = ".py"
+
+// CleanNotebookPath checks a workspace notebook path and normalizes it.
+func CleanNotebookPath(p string) (string, error) {
+	p = strings.TrimSpace(p)
+	if !strings.HasPrefix(p, "/") {
+		return "", errors.New("the workspace path must start with /")
+	}
+	p = path.Clean(p)
+	if p == "/" || strings.Contains(p, "\\") {
+		return "", fmt.Errorf("%s is not a valid notebook path", p)
+	}
+	return p, nil
+}
+
+// JoinNotebookName adds a notebook name to a workspace folder. A trailing .py
+// is dropped, since notebooks have no extension in the workspace.
+func JoinNotebookName(folder, name string) (string, error) {
+	folder, err := CleanFolder(folder)
+	if err != nil {
+		return "", err
+	}
+	name = strings.TrimSpace(name)
+	if strings.EqualFold(path.Ext(name), NotebookExt) {
+		name = strings.TrimSpace(name[:len(name)-len(NotebookExt)])
+	}
+	if name == "" {
+		return "", errors.New("enter a notebook name")
+	}
+	if strings.ContainsAny(name, `/\`) || name == "." || name == ".." {
+		return "", errors.New(`the notebook name cannot contain / or \`)
+	}
+	return CleanNotebookPath(path.Join(folder, name))
+}
+
+func (m *Mirror) clean(remotePath string) (string, error) {
+	if m.notebooks {
+		return CleanNotebookPath(remotePath)
+	}
+	return CleanRemotePath(remotePath)
+}
 
 // Hash returns the hash stored in a Link for content.
 func Hash(content string) string {
@@ -103,13 +152,16 @@ func JoinName(folder, name string) (string, error) {
 
 // LocalPath is where the local copy of a workspace file lives.
 func (m *Mirror) LocalPath(remotePath string) (string, error) {
-	p, err := CleanRemotePath(remotePath)
+	p, err := m.clean(remotePath)
 	if err != nil {
 		return "", err
 	}
 	parts := strings.Split(strings.TrimPrefix(p, "/"), "/")
 	for i, s := range parts {
 		parts[i] = safeSegment(s)
+	}
+	if m.notebooks {
+		parts[len(parts)-1] += NotebookExt
 	}
 	return filepath.Join(append([]string{m.root, "files"}, parts...)...), nil
 }

@@ -1,8 +1,61 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { SQLService, type QueryTab, type WorkspaceItem, type WorkspacePlaces } from "../../bindings/dbx-desktop";
+import { NotebookService, SQLService, type WorkspaceItem, type WorkspacePlaces } from "../../bindings/dbx-desktop";
 import { Modal } from "../dialogs";
 import { errorText, relativeTime } from "../lib";
-import { crumbs, sqlName } from "./wspath";
+import { crumbs, notebookName, sqlName } from "./wspath";
+
+/**
+ * What the workspace browser lists and saves: .sql files for the SQL
+ * scratchpad, or Python notebooks for the notebook view.
+ */
+export interface WorkspaceKind {
+  /** "file" or "notebook", for messages. */
+  noun: string;
+  places(profile: string): Promise<WorkspacePlaces>;
+  list(profile: string, folder: string): Promise<WorkspaceItem[] | null>;
+  /** What is at a path: "" for nothing, "file" for an item of this kind. */
+  itemKind(profile: string, path: string): Promise<string>;
+  /** The name a typed name is saved as, or "" when it is unusable. */
+  targetName(name: string): string;
+  /** How the saved item is described under the name field. */
+  savedAs(target: string): ReactNode;
+  emptyFolder: string;
+  /** Where the name field's selection ends, to preselect the name without an extension. */
+  nameEnd(value: string): number;
+}
+
+export const SQL_FILES: WorkspaceKind = {
+  noun: "file",
+  places: (p) => SQLService.WorkspacePlaces(p),
+  list: (p, f) => SQLService.ListWorkspace(p, f),
+  itemKind: (p, path) => SQLService.WorkspaceItemKind(p, path),
+  targetName: sqlName,
+  savedAs: (t) => (
+    <>
+      Saved as a workspace file, <span className="mono">{t || "name.sql"}</span>.
+    </>
+  ),
+  emptyFolder: "No folders or .sql files here.",
+  nameEnd: (v) => {
+    const dot = v.toLowerCase().lastIndexOf(".sql");
+    return dot > 0 ? dot : v.length;
+  },
+};
+
+export const NOTEBOOKS: WorkspaceKind = {
+  noun: "notebook",
+  places: (p) => NotebookService.NotebookPlaces(p),
+  list: (p, f) => NotebookService.ListNotebookFolder(p, f),
+  itemKind: (p, path) => NotebookService.NotebookItemKind(p, path),
+  targetName: notebookName,
+  savedAs: (t) => (
+    <>
+      Saved as a Python notebook, <span className="mono">{t || "name"}</span>.
+    </>
+  ),
+  emptyFolder: "No folders or Python notebooks here.",
+  nameEnd: (v) => v.length,
+};
 
 export type IconKind = "folder" | "repo" | "file" | "home" | "up" | "reload" | "cloud" | "computer" | "trash";
 
@@ -117,8 +170,9 @@ function FolderNav(props: { folder: string; home: string; onFolder: (path: strin
   );
 }
 
-/** The folders and .sql files in one workspace folder. */
+/** The folders and files (or notebooks) in one workspace folder. */
 function FolderList(props: {
+  kind: WorkspaceKind;
   profile: string;
   folder: string;
   reloadKey: number;
@@ -133,13 +187,13 @@ function FolderList(props: {
   useEffect(() => {
     let live = true;
     setLoad({ state: "loading", items: [], error: "" });
-    SQLService.ListWorkspace(props.profile, props.folder)
+    props.kind.list(props.profile, props.folder)
       .then((items) => live && setLoad({ state: "ready", items: items ?? [], error: "" }))
       .catch((e) => live && setLoad({ state: "error", items: [], error: errorText(e) }));
     return () => {
       live = false;
     };
-  }, [props.profile, props.folder, props.reloadKey]);
+  }, [props.kind, props.profile, props.folder, props.reloadKey]);
 
   if (load.state === "loading") return <div className="tree-note">Loading…</div>;
   if (load.state === "error") return <div className="tree-note error">{load.error}</div>;
@@ -167,12 +221,12 @@ function FolderList(props: {
   );
 }
 
-function usePlaces(profile: string, reloadKey: number) {
+function usePlaces(kind: WorkspaceKind, profile: string, reloadKey: number) {
   const [places, setPlaces] = useState<WorkspacePlaces | null>(null);
   const [error, setError] = useState("");
   useEffect(() => {
     let live = true;
-    SQLService.WorkspacePlaces(profile)
+    kind.places(profile)
       .then((p) => {
         if (!live) return;
         setPlaces(p);
@@ -182,20 +236,22 @@ function usePlaces(profile: string, reloadKey: number) {
     return () => {
       live = false;
     };
-  }, [profile, reloadKey]);
+  }, [kind, profile, reloadKey]);
   return { places, error };
 }
 
 /** The Workspace side panel: recent workspace files and a folder browser. */
 export function WorkspacePanel(props: {
+  kind?: WorkspaceKind;
   profile: string;
   /** Changes whenever a file is saved, so the lists refresh. */
   reloadKey: number;
   current?: string;
   onOpen: (remotePath: string) => void;
 }) {
+  const kind = props.kind ?? SQL_FILES;
   const [retry, setRetry] = useState(0);
-  const { places, error } = usePlaces(props.profile, props.reloadKey + retry);
+  const { places, error } = usePlaces(kind, props.profile, props.reloadKey + retry);
   const [folder, setFolder] = useState("");
   const [listKey, setListKey] = useState(0);
 
@@ -266,6 +322,7 @@ export function WorkspacePanel(props: {
           onReload={() => setListKey((n) => n + 1)}
         />
         <FolderList
+          kind={kind}
           profile={props.profile}
           folder={folder}
           reloadKey={listKey + props.reloadKey}
@@ -273,22 +330,28 @@ export function WorkspacePanel(props: {
           onFolder={setFolder}
           onFile={(it) => props.onOpen(it.path)}
           fileTitle="Open"
-          empty="No folders or .sql files here."
+          empty={kind.emptyFolder}
         />
       </section>
     </div>
   );
 }
 
-/** Chooses a workspace folder and name, then uploads a query file there. */
+/**
+ * Chooses a workspace folder and name, then calls onSave to upload there.
+ * onSave throws to show an error and keep the dialog open.
+ */
 export function SaveToWorkspaceDialog(props: {
+  kind?: WorkspaceKind;
   profile: string;
-  localPath: string;
   defaultName: string;
+  /** Extra sentence under the name field, such as what happens to the scratch copy. */
+  note?: string;
   onClose: () => void;
-  onSaved: (tab: QueryTab) => void;
+  onSave: (folder: string, name: string) => Promise<void>;
 }) {
-  const { places, error: placesError } = usePlaces(props.profile, 0);
+  const kind = props.kind ?? SQL_FILES;
+  const { places, error: placesError } = usePlaces(kind, props.profile, 0);
   const [folder, setFolder] = useState("");
   const [name, setName] = useState(props.defaultName);
   const [listKey, setListKey] = useState(0);
@@ -300,7 +363,7 @@ export function SaveToWorkspaceDialog(props: {
     if (places && !folder) setFolder(places.lastFolder || places.home);
   }, [places, folder]);
 
-  const target = sqlName(name);
+  const target = kind.targetName(name);
   // Any change to the target cancels a pending "replace" confirmation.
   const changeFolder = useCallback((f: string) => {
     setFolder(f);
@@ -316,20 +379,19 @@ export function SaveToWorkspaceDialog(props: {
     setError("");
     try {
       if (replace !== path) {
-        const kind = await SQLService.WorkspaceItemKind(props.profile, path);
-        if (kind === "file") {
+        const there = await kind.itemKind(props.profile, path);
+        if (there === "file") {
           setReplace(path);
           setBusy(false);
           return;
         }
-        if (kind) {
-          setError(`${target} is a ${kind} in this folder. Choose another name.`);
+        if (there) {
+          setError(`${target} is a ${there} in this folder. Choose another name.`);
           setBusy(false);
           return;
         }
       }
-      const tab = await SQLService.SaveToWorkspace(props.profile, props.localPath, folder, target);
-      props.onSaved(tab);
+      await props.onSave(folder, target);
     } catch (err) {
       setError(errorText(err));
       setBusy(false);
@@ -356,6 +418,7 @@ export function SaveToWorkspaceDialog(props: {
                 />
                 <div className="ws-picker-list">
                   <FolderList
+                    kind={kind}
                     profile={props.profile}
                     folder={folder}
                     reloadKey={listKey}
@@ -384,14 +447,10 @@ export function SaveToWorkspaceDialog(props: {
                 setReplace("");
                 setError("");
               }}
-              onFocus={(e) => {
-                const dot = e.target.value.toLowerCase().lastIndexOf(".sql");
-                e.target.setSelectionRange(0, dot > 0 ? dot : e.target.value.length);
-              }}
+              onFocus={(e) => e.target.setSelectionRange(0, kind.nameEnd(e.target.value))}
             />
             <span className="hint">
-              Saved as a workspace file, <span className="mono">{target || "name.sql"}</span>. The scratch copy is
-              removed once it is saved.
+              {kind.savedAs(target)} {props.note ?? "The scratch copy is removed once it is saved."}
             </span>
           </div>
           {replace && (

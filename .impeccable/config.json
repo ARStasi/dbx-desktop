@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "frontend/src/styles.css"
+        ],
+        "createdAt": "2026-11-12T02:28:59.113Z",
+        "reason": "Agent review: existing .place border distinguishes scratch from workspace file origins, .nb-cell border indicates focused notebook cells, and .md blockquote border identifies quotations. All three predate the cloud-status changes and carry semantic meaning."
+      }
+    ]
+  }
+}
