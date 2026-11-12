@@ -132,3 +132,69 @@ func TestHistory(t *testing.T) {
 		t.Errorf("multi-line statement not preserved: %q", got[0].Statement)
 	}
 }
+
+func TestDeleteOnlyInDir(t *testing.T) {
+	saved := moveToTrash
+	defer func() { moveToTrash = saved }()
+	moveToTrash = nil
+
+	dir := t.TempDir()
+	other := t.TempDir()
+	in := filepath.Join(dir, "a.sql")
+	out := filepath.Join(other, "b.sql")
+	for _, p := range []string{in, out} {
+		if err := Write(p, "select 1"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := Delete(dir, out); err == nil {
+		t.Fatal("deleting a file outside the folder should fail")
+	}
+	if err := Delete(dir, filepath.Join(dir, "sub", "..", "..", filepath.Base(other), "b.sql")); err == nil {
+		t.Fatal("a path that escapes the folder should fail")
+	}
+	if err := Delete(dir, in); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(in); !os.IsNotExist(err) {
+		t.Fatalf("a.sql still exists: %v", err)
+	}
+	if _, err := os.Stat(out); err != nil {
+		t.Fatalf("b.sql was touched: %v", err)
+	}
+	if err := Delete(dir, in); err == nil {
+		t.Fatal("deleting a missing file should fail")
+	}
+}
+
+func TestDeleteUsesTrash(t *testing.T) {
+	saved := moveToTrash
+	defer func() { moveToTrash = saved }()
+	trash := t.TempDir()
+	moveToTrash = func(path string) error {
+		_, err := moveInto(trash, path, func(from, to string) error {
+			if _, err := os.Lstat(to); err == nil {
+				return &os.LinkError{Op: "rename", Old: from, New: to, Err: os.ErrExist}
+			}
+			return os.Rename(from, to)
+		})
+		return err
+	}
+
+	dir := t.TempDir()
+	p := filepath.Join(dir, "q.sql")
+	for i := 0; i < 3; i++ {
+		if err := Write(p, fmt.Sprint(i)); err != nil {
+			t.Fatal(err)
+		}
+		if err := Delete(dir, p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for name, want := range map[string]string{"q.sql": "0", "q 2.sql": "1", "q 3.sql": "2"} {
+		b, err := os.ReadFile(filepath.Join(trash, name))
+		if err != nil || string(b) != want {
+			t.Errorf("%s = %q, %v; want %q", name, b, err, want)
+		}
+	}
+}

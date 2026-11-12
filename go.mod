@@ -5,6 +5,7 @@ go 1.26.0
 require (
 	github.com/databricks/databricks-sdk-go v0.198.0
 	github.com/wailsapp/wails/v3 v3.1.0
+	golang.org/x/sys v0.48.0
 	gopkg.in/ini.v1 v1.68.0
 )
 
@@ -37,7 +38,6 @@ require (
 	golang.org/x/mod v0.41.0 // indirect
 	golang.org/x/net v0.60.0 // indirect
 	golang.org/x/oauth2 v0.35.0 // indirect
-	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/term v0.46.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
 	golang.org/x/time v0.5.0 // indirect

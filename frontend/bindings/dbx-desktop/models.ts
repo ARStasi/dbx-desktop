@@ -24,6 +24,18 @@ export interface AppStatus {
 }
 
 /**
+ * DeleteResult reports which query files were deleted and why others were not.
+ */
+export interface DeleteResult {
+    "deleted": string[] | null;
+
+    /**
+     * Errors holds one message per file that could not be deleted.
+     */
+    "errors": string[] | null;
+}
+
+/**
  * FailedRun is a job run that ended badly.
  */
 export interface FailedRun {
@@ -58,11 +70,61 @@ export interface Overview {
 }
 
 /**
+ * PushResult is the outcome of saving a local copy to the workspace.
+ */
+export interface PushResult {
+    /**
+     * Status is saved, conflict (the workspace file changed since it was
+     * downloaded) or missing (the workspace file was deleted).
+     */
+    "status": string;
+    "remote": RemoteFile | null;
+
+    /**
+     * RemoteModifiedAt is the workspace file's modified time on a conflict.
+     */
+    "remoteModifiedAt": number;
+}
+
+/**
  * QueryTab is an open query file with its content.
  */
 export interface QueryTab {
     "file": queries$0.File;
     "content": string;
+
+    /**
+     * Remote is set when the file is the local copy of a workspace file.
+     */
+    "remote"?: RemoteFile | null;
+}
+
+/**
+ * RecentWorkspaceFile is a workspace file opened or saved from this computer.
+ */
+export interface RecentWorkspaceFile {
+    "path": string;
+    "name": string;
+    "opened": number;
+    "unsaved": boolean;
+}
+
+/**
+ * RemoteFile describes the workspace file behind a query tab.
+ */
+export interface RemoteFile {
+    "path": string;
+
+    /**
+     * ModifiedAt is when the workspace file last changed, as far as the app
+     * knows, in Unix milliseconds.
+     */
+    "modifiedAt": number;
+
+    /**
+     * Unsaved is true when the local copy has edits not saved to the workspace.
+     */
+    "unsaved": boolean;
 }
 
 /**
@@ -76,6 +138,11 @@ export interface SQLWorkspaceState {
     "warehouseId": string;
     "tabs": QueryTab[] | null;
     "activeTab": string;
+
+    /**
+     * Trash is true when deleted query files go to the system trash.
+     */
+    "trash": boolean;
 }
 
 /**
@@ -105,4 +172,34 @@ export interface Workspace {
     "profile": dbcfg$0.Profile;
     "meta": settings$0.WorkspaceMeta;
     "active": boolean;
+}
+
+/**
+ * WorkspaceItem is an entry in a workspace folder.
+ */
+export interface WorkspaceItem {
+    "path": string;
+    "name": string;
+
+    /**
+     * Kind is folder, repo (a Git folder) or file. Only .sql files are listed.
+     */
+    "kind": string;
+    "modified": number;
+}
+
+/**
+ * WorkspacePlaces is where the workspace browser starts.
+ */
+export interface WorkspacePlaces {
+    /**
+     * Home is the user's home folder, /Users/<user name>.
+     */
+    "home": string;
+
+    /**
+     * LastFolder is the folder a file was last saved to, or Home.
+     */
+    "lastFolder": string;
+    "recent": RecentWorkspaceFile[] | null;
 }

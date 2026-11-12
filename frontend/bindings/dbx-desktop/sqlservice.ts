@@ -41,6 +41,15 @@ export function CatalogPrefs(profile: string): $CancellablePromise<settings$0.Ca
 }
 
 /**
+ * DeleteQueryFiles moves query files in the workspace's scratch folder to the
+ * trash, or removes them where there is none. Files outside that folder are
+ * refused.
+ */
+export function DeleteQueryFiles(profile: string, paths: string[] | null): $CancellablePromise<$models.DeleteResult> {
+    return $Call.ByID(1382668477, profile, paths);
+}
+
+/**
  * History returns the statements run in a workspace, newest first.
  */
 export function History(profile: string): $CancellablePromise<queries$0.HistoryEntry[] | null> {
@@ -83,10 +92,27 @@ export function ListWarehouses(profile: string): $CancellablePromise<$models.War
 }
 
 /**
+ * ListWorkspace lists the folders, Git folders and .sql files in a workspace
+ * folder: folders first, then files, each sorted by name.
+ */
+export function ListWorkspace(profile: string, folder: string): $CancellablePromise<$models.WorkspaceItem[] | null> {
+    return $Call.ByID(950369934, profile, folder);
+}
+
+/**
  * NewQueryFile creates an empty Untitled-N.sql in the workspace's folder.
  */
 export function NewQueryFile(profile: string): $CancellablePromise<$models.QueryTab> {
     return $Call.ByID(1658273029, profile);
+}
+
+/**
+ * OpenFromWorkspace downloads a workspace .sql file and returns its tab. A
+ * local copy with edits not yet saved to the workspace is kept as it is;
+ * otherwise the copy is refreshed from the workspace.
+ */
+export function OpenFromWorkspace(profile: string, remotePath: string): $CancellablePromise<$models.QueryTab> {
+    return $Call.ByID(3073576798, profile, remotePath);
 }
 
 /**
@@ -102,6 +128,23 @@ export function OpenQueryFile(path: string): $CancellablePromise<$models.QueryTa
  */
 export function PickQueryFile(): $CancellablePromise<string> {
     return $Call.ByID(139978774);
+}
+
+/**
+ * PushToWorkspace saves a local copy back to its workspace file. Unless force
+ * is set it refuses when the workspace file changed or was deleted since it
+ * was downloaded, and reports which.
+ */
+export function PushToWorkspace(profile: string, localPath: string, force: boolean): $CancellablePromise<$models.PushResult> {
+    return $Call.ByID(2147191341, profile, localPath, force);
+}
+
+/**
+ * ReloadFromWorkspace replaces a local copy with the workspace version,
+ * discarding local edits.
+ */
+export function ReloadFromWorkspace(profile: string, localPath: string): $CancellablePromise<$models.QueryTab> {
+    return $Call.ByID(2516619973, profile, localPath);
 }
 
 /**
@@ -142,6 +185,16 @@ export function SaveTextFile(suggestedName: string, content: string): $Cancellab
 }
 
 /**
+ * SaveToWorkspace uploads a local query file to a workspace path, replacing
+ * any file there, and returns the tab for its new local copy. When the file
+ * came from the scratchpad folder it is removed, since the workspace now
+ * holds it. Callers confirm replacing an existing file first.
+ */
+export function SaveToWorkspace(profile: string, localPath: string, folder: string, name: string): $CancellablePromise<$models.QueryTab> {
+    return $Call.ByID(4201799614, profile, localPath, folder, name);
+}
+
+/**
  * StartWarehouse asks a warehouse to start. It returns once the request is
  * accepted, not when the warehouse is running.
  */
@@ -169,6 +222,22 @@ export function StopWarehouse(profile: string, id: string): $CancellablePromise<
  */
 export function TableColumns(profile: string, fullName: string): $CancellablePromise<sqlexec$0.Column[] | null> {
     return $Call.ByID(1213254838, profile, fullName);
+}
+
+/**
+ * WorkspaceItemKind says what is at a workspace path: "" when nothing is,
+ * otherwise file, folder, repo, notebook or another object type in lower case.
+ */
+export function WorkspaceItemKind(profile: string, remotePath: string): $CancellablePromise<string> {
+    return $Call.ByID(3201822759, profile, remotePath);
+}
+
+/**
+ * WorkspacePlaces returns the user's home folder, the last folder saved to
+ * and the workspace files recently used from this computer.
+ */
+export function WorkspacePlaces(profile: string): $CancellablePromise<$models.WorkspacePlaces> {
+    return $Call.ByID(3291311674, profile);
 }
 
 /**

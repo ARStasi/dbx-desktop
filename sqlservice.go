@@ -18,6 +18,7 @@ import (
 	"dbx-desktop/internal/queries"
 	"dbx-desktop/internal/settings"
 	"dbx-desktop/internal/sqlexec"
+	"dbx-desktop/internal/wsfiles"
 )
 
 const browseTimeout = 30 * time.Second
@@ -26,6 +27,8 @@ const browseTimeout = 30 * time.Second
 type QueryTab struct {
 	File    queries.File `json:"file"`
 	Content string       `json:"content"`
+	// Remote is set when the file is the local copy of a workspace file.
+	Remote *RemoteFile `json:"remote,omitempty"`
 }
 
 // SQLWorkspaceState is what the scratchpad restores when it opens.
@@ -35,6 +38,15 @@ type SQLWorkspaceState struct {
 	WarehouseID string     `json:"warehouseId"`
 	Tabs        []QueryTab `json:"tabs"`
 	ActiveTab   string     `json:"activeTab"`
+	// Trash is true when deleted query files go to the system trash.
+	Trash bool `json:"trash"`
+}
+
+// DeleteResult reports which query files were deleted and why others were not.
+type DeleteResult struct {
+	Deleted []string `json:"deleted"`
+	// Errors holds one message per file that could not be deleted.
+	Errors []string `json:"errors"`
 }
 
 // TableRef is a table or view in a schema.
@@ -50,9 +62,12 @@ type SQLService struct {
 	pool       *clientPool
 	store      *settings.Store
 	historyDir string
+	// mirrorDir holds local copies of workspace files, one folder per profile.
+	mirrorDir string
 
 	mu      sync.Mutex
 	running map[string]context.CancelFunc
+	mirrors map[string]*wsfiles.Mirror
 }
 
 // NewSQLService shares the workspace service's clients and settings.
@@ -65,7 +80,9 @@ func NewSQLService(ws *WorkspaceService) (*SQLService, error) {
 		pool:       ws.pool,
 		store:      ws.store,
 		historyDir: filepath.Join(filepath.Dir(settingsPath), "history"),
+		mirrorDir:  filepath.Join(filepath.Dir(settingsPath), "workspace"),
 		running:    map[string]context.CancelFunc{},
+		mirrors:    map[string]*wsfiles.Mirror{},
 	}, nil
 }
 
@@ -94,11 +111,13 @@ func (s *SQLService) State(profile string) (SQLWorkspaceState, error) {
 		return out, err
 	}
 	out.WarehouseID = st.WarehouseID
+	out.Trash = queries.HasTrash()
 	for _, path := range st.Tabs {
 		tab, err := s.OpenQueryFile(path)
 		if err != nil {
 			continue
 		}
+		tab.Remote = s.remoteInfo(profile, path, tab.Content)
 		out.Tabs = append(out.Tabs, tab)
 		if path == st.ActiveTab {
 			out.ActiveTab = path
@@ -159,6 +178,25 @@ func (s *SQLService) WriteQueryFile(path, content string) error {
 func (s *SQLService) RenameQueryFile(path, newName string) (queries.File, error) {
 	f, err := queries.Rename(path, newName)
 	return f, cleanFileErr(err)
+}
+
+// DeleteQueryFiles moves query files in the workspace's scratch folder to the
+// trash, or removes them where there is none. Files outside that folder are
+// refused.
+func (s *SQLService) DeleteQueryFiles(profile string, paths []string) (DeleteResult, error) {
+	out := DeleteResult{Deleted: []string{}, Errors: []string{}}
+	dir, err := s.dir(profile)
+	if err != nil {
+		return out, err
+	}
+	for _, p := range paths {
+		if err := queries.Delete(dir, p); err != nil {
+			out.Errors = append(out.Errors, cleanFileErr(err).Error())
+			continue
+		}
+		out.Deleted = append(out.Deleted, p)
+	}
+	return out, nil
 }
 
 // PickQueryFile shows the native open dialog for a .sql file. It returns an

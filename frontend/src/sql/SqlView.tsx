@@ -1,15 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Events } from "@wailsio/runtime";
-import { SQLService, type Warehouse, type Workspace } from "../../bindings/dbx-desktop";
+import { SQLService, type QueryTab, type RemoteFile, type Warehouse, type Workspace } from "../../bindings/dbx-desktop";
 import type { File as QueryFile, HistoryEntry } from "../../bindings/dbx-desktop/internal/queries/models";
 import type { Result } from "../../bindings/dbx-desktop/internal/sqlexec/models";
 import { ConfirmDialog } from "../dialogs";
-import { displayName, errorText, relativeTime, stateLabel } from "../lib";
+import { displayName, errorText, relativeTime, shortHost, stateLabel } from "../lib";
 import { classify, needsConfirm, type Risk } from "../sqlsplit";
 import { CatalogTree } from "./CatalogTree";
 import { toCSV } from "./csv";
 import { Editor, type EditorHandle } from "./Editor";
 import { ResultsGrid } from "./ResultsGrid";
+import { PlaceBanner, ScratchPanel } from "./ScratchFiles";
+import { ConflictDialog, SaveToWorkspaceDialog, WorkspacePanel, WsIcon } from "./WorkspaceFiles";
+import { suggestedName } from "./wspath";
 
 interface Tab {
   path: string;
@@ -17,6 +20,12 @@ interface Tab {
   content: string;
   /** True while the editor holds changes not yet written to the file. */
   dirty: boolean;
+  /** Set when the file is the local copy of a workspace file. */
+  remote?: RemoteFile;
+}
+
+function toTab(t: QueryTab): Tab {
+  return { path: t.file.path, name: t.file.name, content: t.content, dirty: false, remote: t.remote ?? undefined };
 }
 
 interface Run {
@@ -26,18 +35,31 @@ interface Run {
   result?: Result;
 }
 
-type Side = "catalog" | "files" | "history";
+type Side = "catalog" | "scratch" | "workspace" | "history";
+
+const SIDE_LABELS: Record<Side, string> = {
+  catalog: "Catalog",
+  scratch: "Scratch",
+  workspace: "Workspace",
+  history: "History",
+};
 
 type Ask =
   | { kind: "run"; statement: string; risk: Risk }
   | { kind: "start"; wh: Warehouse }
   | { kind: "stop"; wh: Warehouse }
+  | { kind: "save"; path: string; name: string }
+  | { kind: "conflict"; path: string; missing: boolean }
+  | { kind: "revert"; path: string }
+  | { kind: "delete"; paths: string[] }
   | null;
 
 const SAVE_DELAY_MS = 700;
 const WAREHOUSE_REFRESH_MS = 30_000;
 const isMac = navigator.userAgent.includes("Mac");
 const RUN_KEYS = isMac ? "⌘ Return" : "Ctrl+Enter";
+const FORMAT_KEYS = isMac ? "⇧⌥F" : "Shift+Alt+F";
+const SAVE_KEYS = isMac ? "⌘S" : "Ctrl+S";
 
 function seconds(ms: number): string {
   return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(ms < 10_000 ? 2 : 1)} s`;
@@ -58,6 +80,8 @@ export function SqlView(props: { workspace: Workspace; visible: boolean }) {
 
   const [loaded, setLoaded] = useState(false);
   const [dir, setDir] = useState("");
+  /** True when deleted scratch files go to the system trash. */
+  const [hasTrash, setHasTrash] = useState(false);
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [active, setActive] = useState("");
   const [runs, setRuns] = useState<Record<string, Run>>({});
@@ -70,6 +94,10 @@ export function SqlView(props: { workspace: Workspace; visible: boolean }) {
   const [ask, setAsk] = useState<Ask>(null);
   const [notice, setNotice] = useState("");
   const [renaming, setRenaming] = useState<{ path: string; value: string } | null>(null);
+  /** Paths of tabs being uploaded to the workspace. */
+  const [pushing, setPushing] = useState<string[]>([]);
+  /** Bumped after each workspace save so the Workspace panel refreshes. */
+  const [wsKey, setWsKey] = useState(0);
 
   const editor = useRef<EditorHandle>(null);
   const tabsRef = useRef(tabs);
@@ -112,18 +140,14 @@ export function SqlView(props: { workspace: Workspace; visible: boolean }) {
       try {
         const st = await SQLService.State(profile);
         if (!live) return;
-        let open = (st.tabs ?? []).map((t) => ({
-          path: t.file.path,
-          name: t.file.name,
-          content: t.content,
-          dirty: false,
-        }));
+        let open = (st.tabs ?? []).map(toTab);
         if (open.length === 0) {
           const t = await SQLService.NewQueryFile(profile);
           if (!live) return;
           open = [{ path: t.file.path, name: t.file.name, content: "", dirty: false }];
         }
         setDir(st.dir);
+        setHasTrash(st.trash);
         setTabs(open);
         setActive(open.some((t) => t.path === st.activeTab) ? st.activeTab : open[0].path);
         const list = await loadWarehouses();
@@ -156,7 +180,7 @@ export function SqlView(props: { workspace: Workspace; visible: boolean }) {
   }, [loaded, profile, warehouseId, tabPaths, active]);
 
   useEffect(() => {
-    if (side === "files") loadFiles();
+    if (side === "scratch") loadFiles();
   }, [side, tabPaths, loadFiles]);
 
   // ---------- Saving ----------
@@ -180,7 +204,13 @@ export function SqlView(props: { workspace: Workspace; visible: boolean }) {
 
   const onChange = useCallback(
     (path: string, content: string) => {
-      setTabs((ts) => ts.map((t) => (t.path === path ? { ...t, content, dirty: true } : t)));
+      setTabs((ts) =>
+        ts.map((t) =>
+          t.path === path
+            ? { ...t, content, dirty: true, remote: t.remote && { ...t.remote, unsaved: true } }
+            : t,
+        ),
+      );
       const old = timers.current.get(path);
       if (old) clearTimeout(old);
       timers.current.set(
@@ -233,6 +263,140 @@ export function SqlView(props: { workspace: Workspace; visible: boolean }) {
     }
   };
 
+  // ---------- Workspace files ----------
+
+  /** Opens a workspace file, or switches to its tab when it is already open. */
+  const openRemote = async (remotePath: string) => {
+    const open = tabsRef.current.find((t) => t.remote?.path === remotePath);
+    if (open) {
+      setActive(open.path);
+      return;
+    }
+    try {
+      const t = toTab(await SQLService.OpenFromWorkspace(profile, remotePath));
+      setTabs((ts) => (ts.some((x) => x.path === t.path) ? ts : [...ts, t]));
+      setActive(t.path);
+      setNotice(t.remote?.unsaved ? `${t.name} has edits from earlier that are not saved to the workspace.` : "");
+      setWsKey((n) => n + 1);
+    } catch (e) {
+      setNotice(errorText(e));
+    }
+  };
+
+  /** Moves a tab to a new file, keeping its editor state and last result. */
+  const moveTab = (oldPath: string, t: Tab) => {
+    // A tab already showing the new file is replaced; its content was just overwritten.
+    if (oldPath !== t.path && tabsRef.current.some((x) => x.path === t.path)) editor.current?.forget(t.path);
+    editor.current?.rename(oldPath, t.path);
+    setTabs((ts) =>
+      ts
+        .filter((x) => x.path !== t.path || x.path === oldPath)
+        .map((x) => (x.path === oldPath ? { ...x, path: t.path, name: t.name, remote: t.remote } : x)),
+    );
+    setRuns((rs) => {
+      if (!rs[oldPath] || oldPath === t.path) return rs;
+      const { [oldPath]: moved, ...others } = rs;
+      return { ...others, [t.path]: moved };
+    });
+    setActive((a) => (a === oldPath ? t.path : a));
+  };
+
+  const setRemote = (path: string, remote: RemoteFile) =>
+    setTabs((ts) => ts.map((t) => (t.path === path ? { ...t, remote } : t)));
+
+  /** ⌘S: saves a workspace file back, or asks where to save a scratch query. */
+  const saveToWorkspace = async (path: string, force = false) => {
+    const tab = tabsRef.current.find((t) => t.path === path);
+    if (!tab || pushing.includes(path)) return;
+    await saveNow(path);
+    if (!tab.remote) {
+      setAsk({ kind: "save", path, name: suggestedName(tab.name) });
+      return;
+    }
+    const content = tabsRef.current.find((t) => t.path === path)?.content;
+    setPushing((p) => [...p, path]);
+    try {
+      const res = await SQLService.PushToWorkspace(profile, path, force);
+      if (res.status === "saved" && res.remote) {
+        // Edits typed while the upload ran are still unsaved.
+        const latest = tabsRef.current.find((t) => t.path === path)?.content;
+        setRemote(path, { ...res.remote, unsaved: latest !== content });
+        setNotice("");
+        setWsKey((n) => n + 1);
+      } else {
+        setAsk({ kind: "conflict", path, missing: res.status === "missing" });
+      }
+    } catch (e) {
+      setNotice(`Could not save ${tab.name} to the workspace: ${errorText(e)}`);
+    } finally {
+      setPushing((p) => p.filter((x) => x !== path));
+    }
+  };
+
+  /** Replaces a tab's text with the workspace version, discarding local edits. */
+  const loadRemote = async (path: string) => {
+    const timer = timers.current.get(path);
+    if (timer) {
+      clearTimeout(timer);
+      timers.current.delete(path);
+    }
+    try {
+      const t = toTab(await SQLService.ReloadFromWorkspace(profile, path));
+      editor.current?.replace(path, t.content);
+      setTabs((ts) => ts.map((x) => (x.path === path ? { ...x, content: t.content, dirty: false, remote: t.remote } : x)));
+      setNotice("");
+      setWsKey((n) => n + 1);
+    } catch (e) {
+      setNotice(errorText(e));
+    }
+  };
+
+  /** Deletes scratch files and closes their tabs without saving them again. */
+  const deleteFiles = async (paths: string[]) => {
+    for (const p of paths) {
+      const timer = timers.current.get(p);
+      if (timer) clearTimeout(timer);
+      timers.current.delete(p);
+    }
+    try {
+      const res = await SQLService.DeleteQueryFiles(profile, paths);
+      const gone = new Set(res.deleted ?? []);
+      if (gone.size > 0) {
+        const list = tabsRef.current;
+        const rest = list.filter((t) => !gone.has(t.path));
+        // Drop the tabs now so nothing writes the files back.
+        tabsRef.current = rest;
+        setTabs(rest);
+        gone.forEach((p) => editor.current?.forget(p));
+        setRuns((rs) => Object.fromEntries(Object.entries(rs).filter(([k]) => !gone.has(k))));
+        if (gone.has(active)) {
+          const idx = list.findIndex((t) => t.path === active);
+          const next = list.slice(idx + 1).find((t) => !gone.has(t.path)) ?? [...list.slice(0, idx)].reverse().find((t) => !gone.has(t.path));
+          setActive(next?.path ?? "");
+        }
+      }
+      const errors = res.errors ?? [];
+      setNotice(errors.length ? `Could not delete ${errors.length === 1 ? "a file" : `${errors.length} files`}: ${errors.join("; ")}` : "");
+    } catch (e) {
+      setNotice(errorText(e));
+    }
+    loadFiles();
+  };
+
+  const saveRef = useRef(saveToWorkspace);
+  saveRef.current = saveToWorkspace;
+  useEffect(() => {
+    if (!props.visible) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== "s" || !(isMac ? e.metaKey : e.ctrlKey) || e.altKey || e.shiftKey) return;
+      e.preventDefault();
+      if (document.querySelector("dialog[open]") || !active) return;
+      saveRef.current(active);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [props.visible, active]);
+
   const pickFile = async () => {
     try {
       const path = await SQLService.PickQueryFile();
@@ -245,6 +409,13 @@ export function SqlView(props: { workspace: Workspace; visible: boolean }) {
   const closeTab = async (path: string) => {
     await saveNow(path);
     const list = tabsRef.current;
+    const closing = list.find((t) => t.path === path);
+    if (closing?.remote?.unsaved) {
+      setNotice(
+        `${closing.name} has edits that are not saved to the workspace. They are kept on this computer and come back when you open it again.`,
+      );
+    }
+    if (closing?.remote) setWsKey((n) => n + 1);
     const idx = list.findIndex((t) => t.path === path);
     const rest = list.filter((t) => t.path !== path);
     setTabs(rest);
@@ -332,6 +503,15 @@ export function SqlView(props: { workspace: Workspace; visible: boolean }) {
     }
   };
 
+  const formatQuery = () => {
+    try {
+      editor.current?.format();
+      setNotice("");
+    } catch (e) {
+      setNotice(`Could not format: ${errorText(e).split("\n")[0]}`);
+    }
+  };
+
   const exportCSV = async () => {
     const res = run?.result;
     if (!res || !activeTab) return;
@@ -374,38 +554,40 @@ export function SqlView(props: { workspace: Workspace; visible: boolean }) {
     <div className="sql" data-file-drop-target>
       <aside className="side" aria-label="Browser">
         <div className="side-tabs" role="tablist">
-          {(["catalog", "files", "history"] as Side[]).map((s) => (
+          {(Object.keys(SIDE_LABELS) as Side[]).map((s) => (
             <button key={s} role="tab" aria-selected={side === s} onClick={() => setSide(s)}>
-              {s === "catalog" ? "Catalog" : s === "files" ? "Files" : "History"}
+              {SIDE_LABELS[s]}
             </button>
           ))}
         </div>
         {side === "catalog" && <CatalogTree profile={profile} onInsert={(t) => editor.current?.insert(t)} />}
-        {side === "files" && (
-          <div className="side-body">
-            <div className="side-tools">
-              <span className="muted mono" title={dir}>
-                {dir}
-              </span>
-              <button className="btn small" onClick={pickFile}>
-                Open…
-              </button>
+        {side === "workspace" && (
+          <>
+            <PlaceBanner kind="workspace" title="Workspace" detail={shortHost(ws.profile.host)}>
+              Files stored in Databricks. Edits stay on this computer until you save with {SAVE_KEYS}.
+            </PlaceBanner>
+            <WorkspacePanel profile={profile} reloadKey={wsKey} current={activeTab?.remote?.path} onOpen={openRemote} />
+          </>
+        )}
+        {side === "scratch" && (
+          <>
+            <PlaceBanner kind="scratch" title="Scratch" detail={dir} detailTitle={dir}>
+              Local drafts on this computer, saved as you type. Not in Databricks until you save one to the workspace.
+            </PlaceBanner>
+            <div className="side-body">
+              <ScratchPanel
+                files={files}
+                current={activeTab && !activeTab.remote ? activeTab.path : undefined}
+                onOpen={openPath}
+                onDelete={(paths) => paths.length && setAsk({ kind: "delete", paths })}
+              />
+              <div className="scratch-foot">
+                <button className="link" onClick={pickFile}>
+                  Open a .sql file from elsewhere…
+                </button>
+              </div>
             </div>
-            {files.length === 0 ? (
-              <div className="tree-note">No query files in this folder yet.</div>
-            ) : (
-              <ul className="side-list">
-                {files.map((f) => (
-                  <li key={f.path}>
-                    <button onClick={() => openPath(f.path)} aria-current={f.path === active ? "true" : undefined}>
-                      <span className="tree-name">{f.name}</span>
-                      <span className="tree-hint">{relativeTime(f.modified)}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+          </>
         )}
         {side === "history" && (
           <div className="side-body">
@@ -439,7 +621,13 @@ export function SqlView(props: { workspace: Workspace; visible: boolean }) {
       <section className="work">
         <div className="tabstrip" role="tablist" aria-label="Open queries">
           {tabs.map((t) => (
-            <div key={t.path} className="qtab" role="tab" aria-selected={t.path === active} title={t.path}>
+            <div
+              key={t.path}
+              className="qtab"
+              role="tab"
+              aria-selected={t.path === active}
+              title={t.remote ? `Workspace: ${t.remote.path}` : t.path}
+            >
               {renaming?.path === t.path ? (
                 <input
                   className="qtab-input"
@@ -462,14 +650,26 @@ export function SqlView(props: { workspace: Workspace; visible: boolean }) {
                 <button
                   className="qtab-name"
                   onClick={() => setActive(t.path)}
-                  onDoubleClick={() => setRenaming({ path: t.path, value: t.name })}
+                  onDoubleClick={() => !t.remote && setRenaming({ path: t.path, value: t.name })}
                 >
-                  {t.name}
-                  {t.dirty && (
-                    <span className="unsaved" title="Saving…" aria-label="unsaved changes">
+                  {t.remote && <WsIcon kind="cloud" className="qtab-ws" />}
+                  <span className="qtab-label">{t.name}</span>
+                  {t.remote?.unsaved ? (
+                    <span
+                      className="unsaved remote"
+                      title={`Not saved to the workspace. ${SAVE_KEYS} saves it.`}
+                      aria-label="not saved to the workspace"
+                    >
                       {" "}
                       ●
                     </span>
+                  ) : (
+                    t.dirty && (
+                      <span className="unsaved" title="Saving…" aria-label="unsaved changes">
+                        {" "}
+                        ●
+                      </span>
+                    )
                   )}
                 </button>
               )}
@@ -492,12 +692,54 @@ export function SqlView(props: { workspace: Workspace; visible: boolean }) {
               Cancel
             </button>
           )}
+          <button
+            className="btn"
+            onClick={formatQuery}
+            disabled={!activeTab}
+            title="Format the selection, or the whole query when nothing is selected"
+          >
+            Format <span className="keys">{FORMAT_KEYS}</span>
+          </button>
+          {activeTab?.remote ? (
+            <>
+              <button
+                className="btn"
+                onClick={() => saveToWorkspace(activeTab.path)}
+                disabled={!activeTab.remote.unsaved || pushing.includes(activeTab.path)}
+                title={`Save to ${activeTab.remote.path}`}
+              >
+                {pushing.includes(activeTab.path) ? "Saving…" : "Save"} <span className="keys">{SAVE_KEYS}</span>
+              </button>
+              <span className="ws-status" title={activeTab.remote.path}>
+                {activeTab.remote.unsaved ? (
+                  <>
+                    Not saved to workspace ·{" "}
+                    <button className="link" onClick={() => setAsk({ kind: "revert", path: activeTab.path })}>
+                      Discard
+                    </button>
+                  </>
+                ) : (
+                  <>Saved to workspace {relativeTime(activeTab.remote.modifiedAt)}</>
+                )}
+              </span>
+            </>
+          ) : (
+            <button
+              className="btn"
+              onClick={() => activeTab && saveToWorkspace(activeTab.path)}
+              disabled={!activeTab}
+              title="Keep this query as a file in the Databricks workspace"
+            >
+              Save to workspace… <span className="keys">{SAVE_KEYS}</span>
+            </button>
+          )}
           <span className="toolbar-gap" />
           <label className="muted" htmlFor="wh-select">
             Warehouse
           </label>
           <select
             id="wh-select"
+            aria-label="Warehouse"
             className="input select"
             value={warehouseId}
             onChange={(e) => setWarehouseId(e.target.value)}
@@ -548,6 +790,7 @@ export function SqlView(props: { workspace: Workspace; visible: boolean }) {
               initial={activeTab.content}
               onChange={onChange}
               onRun={runQuery}
+              onFormat={formatQuery}
             />
           ) : (
             <div className="empty">
@@ -662,6 +905,73 @@ export function SqlView(props: { workspace: Workspace; visible: boolean }) {
           </p>
         </ConfirmDialog>
       )}
+      {ask?.kind === "save" && (
+        <SaveToWorkspaceDialog
+          profile={profile}
+          localPath={ask.path}
+          defaultName={ask.name}
+          onClose={() => setAsk(null)}
+          onSaved={(t) => {
+            const oldPath = ask.path;
+            setAsk(null);
+            moveTab(oldPath, toTab(t));
+            setNotice("");
+            setWsKey((n) => n + 1);
+            if (side === "scratch") loadFiles();
+          }}
+        />
+      )}
+      {ask?.kind === "conflict" && (
+        <ConflictDialog
+          name={tabs.find((t) => t.path === ask.path)?.name ?? ""}
+          remotePath={tabs.find((t) => t.path === ask.path)?.remote?.path ?? ""}
+          missing={ask.missing}
+          onClose={() => setAsk(null)}
+          onOverwrite={() => {
+            const path = ask.path;
+            setAsk(null);
+            saveToWorkspace(path, true);
+          }}
+          onLoadRemote={() => {
+            const path = ask.path;
+            setAsk(null);
+            loadRemote(path);
+          }}
+        />
+      )}
+      {ask?.kind === "revert" && (
+        <ConfirmDialog
+          title="Discard your edits?"
+          confirmLabel="Discard edits"
+          danger
+          onClose={() => setAsk(null)}
+          onConfirm={() => {
+            const path = ask.path;
+            setAsk(null);
+            loadRemote(path);
+          }}
+        >
+          <p>
+            This replaces the query with the version saved in the workspace,{" "}
+            <span className="mono">{tabs.find((t) => t.path === ask.path)?.remote?.path}</span>. You can undo it in the
+            editor until you close the tab.
+          </p>
+        </ConfirmDialog>
+      )}
+      {ask?.kind === "delete" && (
+        <DeleteDialog
+          paths={ask.paths}
+          names={ask.paths.map((p) => files.find((f) => f.path === p)?.name ?? p.split(/[\\/]/).pop() ?? p)}
+          open={tabs.filter((t) => ask.paths.includes(t.path)).length}
+          trash={hasTrash}
+          onClose={() => setAsk(null)}
+          onConfirm={() => {
+            const paths = ask.paths;
+            setAsk(null);
+            deleteFiles(paths);
+          }}
+        />
+      )}
       {ask?.kind === "start" && (
         <ConfirmDialog
           title={`Start ${ask.wh.name}?`}
@@ -680,5 +990,42 @@ export function SqlView(props: { workspace: Workspace; visible: boolean }) {
         </ConfirmDialog>
       )}
     </div>
+  );
+}
+
+function DeleteDialog(props: {
+  paths: string[];
+  names: string[];
+  /** How many of the files are open in tabs. */
+  open: number;
+  trash: boolean;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  const n = props.paths.length;
+  const what = n === 1 ? props.names[0] : `${n} scratch files`;
+  const shown = props.names.slice(0, 8);
+  return (
+    <ConfirmDialog
+      title={props.trash ? `Move ${what} to the Trash?` : `Delete ${what}?`}
+      confirmLabel={props.trash ? "Move to Trash" : "Delete"}
+      danger
+      onClose={props.onClose}
+      onConfirm={props.onConfirm}
+    >
+      {n > 1 && (
+        <ul className="delete-list mono">
+          {shown.map((name, i) => (
+            <li key={props.paths[i]}>{name}</li>
+          ))}
+          {n > shown.length && <li className="muted">and {n - shown.length} more</li>}
+        </ul>
+      )}
+      <p>
+        {props.trash ? `You can restore ${n === 1 ? "it" : "them"} from the Trash.` : "This cannot be undone."}{" "}
+        {props.open > 0 &&
+          (props.open === n && n === 1 ? "Its tab will close." : `${props.open} open ${props.open === 1 ? "tab" : "tabs"} will close.`)}
+      </p>
+    </ConfirmDialog>
   );
 }

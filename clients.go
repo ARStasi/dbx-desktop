@@ -9,6 +9,7 @@ import (
 	"github.com/databricks/databricks-sdk-go/service/iam"
 	"github.com/databricks/databricks-sdk-go/service/jobs"
 	"github.com/databricks/databricks-sdk-go/service/sql"
+	"github.com/databricks/databricks-sdk-go/service/workspace"
 )
 
 // apiClients holds only the service clients the app uses. Building these
@@ -22,6 +23,7 @@ type apiClients struct {
 	catalogs   *catalog.CatalogsAPI
 	schemas    *catalog.SchemasAPI
 	tables     *catalog.TablesAPI
+	workspace  *workspace.WorkspaceAPI
 }
 
 // clientPool caches one set of API clients per profile, shared by services.
@@ -63,6 +65,7 @@ func (p *clientPool) get(profile string) (*apiClients, error) {
 		catalogs:   catalog.NewCatalogs(api),
 		schemas:    catalog.NewSchemas(api),
 		tables:     catalog.NewTables(api),
+		workspace:  workspace.NewWorkspace(api),
 	}
 	p.clients[profile] = c
 	return c, nil

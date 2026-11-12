@@ -1220,6 +1220,26 @@ dialog::backdrop {
   padding: 8px 12px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
+  container-type: inline-size;
+}
+
+.toolbar .btn {
+  flex: none;
+  white-space: nowrap;
+}
+
+.toolbar .select {
+  flex: 0 1 240px;
+  min-width: 90px;
+  text-overflow: ellipsis;
+}
+
+/* In a narrow window, drop the shortcut hints and labels before anything overflows. */
+@container (max-width: 940px) {
+  .toolbar .keys,
+  .toolbar label {
+    display: none;
+  }
 }
 
 .toolbar-gap {
@@ -1379,4 +1399,305 @@ dialog::backdrop {
   font-weight: 400;
   color: var(--text-2);
   text-transform: lowercase;
+}
+
+/* ---------- Workspace files ---------- */
+
+.side-body.ws {
+  display: flex;
+  flex-direction: column;
+}
+
+.ws-heading {
+  margin: 0;
+  padding: 10px 10px 4px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+
+.ws-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 8px 6px 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ws-crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  padding: 0 4px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.ws-crumb {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--focus);
+  cursor: pointer;
+}
+
+.ws-crumb:hover {
+  text-decoration: underline;
+}
+
+.ws-sep {
+  padding: 0 3px;
+  color: var(--text-2);
+}
+
+.ws .tree,
+.ws-picker .tree {
+  padding-top: 4px;
+}
+
+.tree-main[aria-current="true"] {
+  font-weight: 600;
+  background: var(--surface-2);
+}
+
+.kind-ws-folder,
+.kind-ws-repo {
+  color: var(--text-2);
+}
+
+.kind-ws-file {
+  color: var(--syn-type);
+}
+
+dialog:has(.ws-save) {
+  width: min(560px, calc(100vw - 48px));
+}
+
+.ws-picker {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding-top: 6px;
+}
+
+.ws-picker-list {
+  height: 220px;
+  overflow: auto;
+}
+
+.ws-warn {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--warn-bg);
+  color: var(--warn-text);
+}
+
+.unsaved.remote {
+  color: var(--ws);
+}
+
+.qtab-ws {
+  margin-right: 4px;
+  vertical-align: -2px;
+  color: var(--text-2);
+}
+
+.ws-status {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.qtab-name {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.qtab-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.qtab-name .unsaved {
+  flex: none;
+  white-space: pre;
+}
+
+.ws-recent-name {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+}
+
+/* ---------- Scratch vs Workspace ---------- */
+
+/* Each file panel opens with a banner saying where its files live. Scratch is
+   neutral (this computer); Workspace takes the workspace color (Databricks). */
+.place {
+  flex: none;
+  padding: 9px 10px 8px;
+  border-bottom: 1px solid var(--border);
+  border-left: 3px solid var(--place);
+  background: color-mix(in srgb, var(--place) 7%, var(--surface));
+}
+
+.place-scratch {
+  --place: var(--text-2);
+}
+
+.place-workspace {
+  --place: var(--ws);
+}
+
+.place-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.place-icon {
+  color: var(--place);
+}
+
+.place-detail {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+  font-size: 11.5px;
+  color: var(--text-2);
+}
+
+.place-detail.path {
+  direction: rtl; /* keep the end of a long folder path visible */
+}
+
+.place-hint {
+  margin: 3px 0 0;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--text-2);
+}
+
+.qtab-ws.icon {
+  color: var(--ws);
+}
+
+.scratch-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 4px 10px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.scratch-bar.selecting {
+  background: color-mix(in srgb, var(--focus) 8%, var(--surface));
+}
+
+.scratch-count {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scratch-bar.selecting .scratch-count {
+  font-weight: 600;
+}
+
+.scratch-bar input,
+.scratch-check {
+  flex: none;
+  margin: 0;
+  accent-color: var(--focus);
+}
+
+.scratch-list li {
+  display: flex;
+  align-items: center;
+  padding-left: 10px;
+}
+
+.scratch-list li:hover {
+  background: var(--surface-2);
+}
+
+.scratch-list li.selected {
+  background: color-mix(in srgb, var(--focus) 12%, var(--surface));
+}
+
+.scratch-list li button:hover,
+.scratch-list li button[aria-current="true"] {
+  background: none;
+}
+
+.scratch-list li:has(> button[aria-current="true"]) {
+  background: var(--surface-2);
+}
+
+.scratch-list li > button:not(.scratch-del) {
+  padding-left: 8px;
+}
+
+/* The checkbox and delete button stay out of the way until needed. */
+.scratch-check,
+.scratch-list .scratch-del {
+  opacity: 0;
+}
+
+.scratch-list li:hover .scratch-check,
+.scratch-list li:focus-within .scratch-check,
+.scratch-list li:hover .scratch-del,
+.scratch-list li:focus-within .scratch-del,
+.scratch-list li.selected .scratch-check,
+.scratch:has(.scratch-bar.selecting) .scratch-check {
+  opacity: 1;
+}
+
+.scratch:has(.scratch-bar.selecting) .scratch-del {
+  display: none;
+}
+
+.scratch-list .scratch-del {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  margin-right: 4px;
+  display: inline-grid;
+  place-items: center;
+}
+
+.scratch-list .scratch-del:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--danger);
+}
+
+.scratch-foot {
+  padding: 10px;
+  font-size: 12px;
+}
+
+.delete-list {
+  margin: 0 0 10px;
+  padding: 8px 10px 8px 28px;
+  max-height: 180px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12.5px;
 }

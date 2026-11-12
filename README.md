@@ -17,7 +17,12 @@ Pillar 2, the SQL scratchpad, is built:
 
 - Query tabs backed by plain `.sql` files, saved automatically, in `Documents/dbx-desktop/<profile>/` by default
 - Open any `.sql` file from disk, or drop one on the window
+- The Scratch panel lists those local drafts and the Workspace panel lists files in Databricks; each opens with a banner saying where its files live, and workspace tabs carry a cloud icon
+- Delete scratch files one at a time or several at once (Cmd/Ctrl-click, Shift-click, Cmd/Ctrl+A, then Delete). They go to the Trash on macOS and Linux, and their tabs close
+- Save a query you want to keep to the Databricks workspace as a `.sql` file (Cmd/Ctrl+S). The scratch copy is removed, and the tab now edits the workspace file. Edits autosave to a local copy, and Cmd/Ctrl+S uploads them, after checking that nobody changed the file in Databricks in the meantime
+- Workspace browser with recently used workspace files, to open hosted `.sql` files
 - Cmd/Ctrl+Enter runs the selection, or the statement under the cursor
+- Shift+Alt+F (or the Format button) formats the selection, or the whole query, for Databricks SQL; long lines wrap
 - Results grid capped at 10,000 rows, with CSV export
 - Unity Catalog browser, one catalog at a time, with a filter, insert buttons, and a per-workspace choice of which catalogs to show
 - Warehouse picker with start and stop
@@ -62,6 +67,8 @@ DATABRICKS_CONFIG_FILE=/tmp/test.databrickscfg DBX_DESKTOP_CONFIG_DIR=/tmp/dbx-d
 | `clients.go` | Per-profile Databricks API clients shared by the services |
 | `internal/sqlexec` | Runs one statement through the Statement Execution API |
 | `internal/queries` | Query files and run history |
+| `workspacefiles.go` | Saving, opening and browsing `.sql` files in the workspace |
+| `internal/wsfiles` | Local copies of workspace files and what they were last synced to |
 | `frontend/src` | React UI |
 | `frontend/bindings` | Generated TypeScript bindings; do not edit |
 
@@ -71,4 +78,5 @@ DATABRICKS_CONFIG_FILE=/tmp/test.databrickscfg DBX_DESKTOP_CONFIG_DIR=/tmp/dbx-d
 - App settings: `settings.json` in the per-user config folder under `dbx-desktop` (or `DBX_DESKTOP_CONFIG_DIR`)
 - Query files: `Documents/dbx-desktop/<profile>/`, or wherever you open them from
 - Query history: `history/<profile>.jsonl` next to `settings.json`
+- Local copies of workspace files: `workspace/<profile>/` next to `settings.json`. They hold edits until you save them to the workspace
 - OAuth tokens: the Databricks CLI's own token cache. The app stores no credentials.

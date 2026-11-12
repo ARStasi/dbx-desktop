@@ -1,11 +1,12 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { basicSetup } from "codemirror";
-import { EditorState, Prec } from "@codemirror/state";
+import { Annotation, EditorState, Prec } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { sql, SQLDialect } from "@codemirror/lang-sql";
 import { tags as t } from "@lezer/highlight";
 import { statementAt } from "../sqlsplit";
+import { formatSql, mapOffset } from "./format";
 
 export interface EditorHandle {
   /** Inserts text at the cursor, replacing any selection. */
@@ -13,11 +14,21 @@ export interface EditorHandle {
   /** The selected text, or the statement under the cursor when nothing is selected. */
   runTarget(): string;
   focus(): void;
+  /** Formats the selection, or the whole document when nothing is selected. Throws if the SQL cannot be parsed. */
+  format(): void;
   /** Moves a document's undo history to a new key after its file is renamed. */
   rename(oldKey: string, newKey: string): void;
   /** Drops a closed document's saved state. */
   forget(key: string): void;
+  /**
+   * Replaces a document's text without reporting it as an edit, for example
+   * after loading a newer version. The shown document keeps its undo history.
+   */
+  replace(key: string, text: string): void;
 }
+
+// Marks changes that come from outside the editor, which are not edits.
+const external = Annotation.define<boolean>();
 
 const dialect = SQLDialect.define({
   backslashEscapes: true,
@@ -62,6 +73,7 @@ export const Editor = forwardRef<
     initial: string;
     onChange: (docKey: string, text: string) => void;
     onRun: () => void;
+    onFormat: () => void;
   }
 >(function Editor(props, ref) {
   const host = useRef<HTMLDivElement>(null);
@@ -87,12 +99,25 @@ export const Editor = forwardRef<
             },
           ]),
         ),
+        // Shift+Alt+F formats. Matched on the physical key because on macOS Alt
+        // turns F into a typed character, which CodeMirror's keymap won't bind.
+        Prec.highest(
+          EditorView.domEventHandlers({
+            keydown(e) {
+              if (e.code !== "KeyF" || !e.altKey || !e.shiftKey || e.ctrlKey || e.metaKey) return false;
+              e.preventDefault();
+              cb.current.onFormat();
+              return true;
+            },
+          }),
+        ),
         basicSetup,
         sql({ dialect, upperCaseKeywords: true }),
         syntaxHighlighting(highlight),
         theme,
+        EditorView.lineWrapping,
         EditorView.updateListener.of((u) => {
-          if (u.docChanged && shown.current !== null) {
+          if (u.docChanged && shown.current !== null && !u.transactions.some((tr) => tr.annotation(external))) {
             cb.current.onChange(shown.current, u.state.doc.toString());
           }
         }),
@@ -137,6 +162,27 @@ export const Editor = forwardRef<
     focus() {
       view.current?.focus();
     },
+    format() {
+      const v = view.current;
+      if (!v) return;
+      const sel = v.state.selection.main;
+      const from = sel.empty ? 0 : sel.from;
+      const to = sel.empty ? v.state.doc.length : sel.to;
+      const before = v.state.sliceDoc(from, to);
+      const after = formatSql(before);
+      if (after !== before) {
+        v.dispatch({
+          changes: { from, to, insert: after },
+          // Keep a formatted selection selected; otherwise keep the cursor on the same code.
+          selection: sel.empty
+            ? { anchor: mapOffset(before, after, sel.head) }
+            : { anchor: from, head: from + after.length },
+          scrollIntoView: true,
+          userEvent: "input.format",
+        });
+      }
+      v.focus();
+    },
     rename(oldKey, newKey) {
       const st = states.current.get(oldKey);
       if (st) {
@@ -147,6 +193,16 @@ export const Editor = forwardRef<
     },
     forget(key) {
       states.current.delete(key);
+    },
+    replace(key, text) {
+      const v = view.current;
+      if (v && shown.current === key) {
+        if (v.state.doc.toString() !== text) {
+          v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: text }, annotations: external.of(true) });
+        }
+      } else {
+        states.current.delete(key);
+      }
     },
   }));
 

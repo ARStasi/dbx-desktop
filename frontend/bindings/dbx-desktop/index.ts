@@ -10,11 +10,17 @@ export {
 
 export type {
     AppStatus,
+    DeleteResult,
     FailedRun,
     Overview,
+    PushResult,
     QueryTab,
+    RecentWorkspaceFile,
+    RemoteFile,
     SQLWorkspaceState,
     TableRef,
     Warehouse,
-    Workspace
+    Workspace,
+    WorkspaceItem,
+    WorkspacePlaces
 } from "./models.js";
