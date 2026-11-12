@@ -57,5 +57,6 @@ export function authLabel(authType: string): string {
 export function stateLabel(state: string): string {
   const s = state.toLowerCase().replace(/_/g, " ");
   if (s === "timedout") return "Timed out";
+  if (s === "canceled") return "Cancelled";
   return s.charAt(0).toUpperCase() + s.slice(1);
 }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { WorkspaceService, type Workspace } from "../bindings/dbx-desktop";
 import type { WorkspaceMeta } from "../bindings/dbx-desktop/internal/settings/models";
 import { displayName, errorText, shortHost } from "./lib";
@@ -12,9 +12,14 @@ export function Modal(props: {
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
+  // A layout effect, so the dialog is closed before it leaves the page.
+  // Closing it is what hands focus back to wherever it was, such as the editor.
+  useLayoutEffect(() => {
     const d = ref.current;
     if (d && !d.open) d.showModal();
+    return () => {
+      if (d?.open) d.close();
+    };
   }, []);
   return (
     <dialog

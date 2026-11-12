@@ -447,6 +447,11 @@ export function SqlView(props: { workspace: Workspace; visible: boolean }) {
                   aria-label="File name"
                   value={renaming.value}
                   onChange={(e) => setRenaming({ path: t.path, value: e.target.value })}
+                  onFocus={(e) => {
+                    // Preselect the name without its extension, ready to overtype.
+                    const dot = e.target.value.toLowerCase().lastIndexOf(".sql");
+                    e.target.setSelectionRange(0, dot > 0 ? dot : e.target.value.length);
+                  }}
                   onBlur={commitRename}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") commitRename();
@@ -585,10 +590,16 @@ export function SqlView(props: { workspace: Workspace; visible: boolean }) {
           {result?.status === "SUCCEEDED" && (
             <>
               <div className="result-status">
-                <span>
-                  <strong>{rowCount.toLocaleString()}</strong> {rowCount === 1 ? "row" : "rows"} ·{" "}
-                  {seconds(result.durationMs)}
-                </span>
+                {(result.columns?.length ?? 0) > 0 ? (
+                  <span>
+                    <strong>{rowCount.toLocaleString()}</strong> {rowCount === 1 ? "row" : "rows"} ·{" "}
+                    {seconds(result.durationMs)}
+                  </span>
+                ) : (
+                  <span>
+                    <strong>Succeeded</strong> · {seconds(result.durationMs)}
+                  </span>
+                )}
                 {result.truncated && (
                   <span className="badge warn">Showing the first {rowCount.toLocaleString()} rows</span>
                 )}
@@ -602,7 +613,7 @@ export function SqlView(props: { workspace: Workspace; visible: boolean }) {
               {(result.columns?.length ?? 0) > 0 ? (
                 <ResultsGrid columns={result.columns ?? []} rows={result.rows ?? []} />
               ) : (
-                <div className="empty">The statement succeeded and returned no rows.</div>
+                <div className="empty">The statement returned no result set.</div>
               )}
             </>
           )}
