@@ -73,3 +73,28 @@ func TestSQLState(t *testing.T) {
 		t.Fatal("Forget should drop the SQL state")
 	}
 }
+
+func TestCatalogPrefs(t *testing.T) {
+	s := New(filepath.Join(t.TempDir(), "settings.json"))
+	if p, err := s.Catalogs("dev"); err != nil || len(p.Visible) != 0 || p.Current != "" {
+		t.Fatalf("empty: %+v %v", p, err)
+	}
+	want := CatalogPrefs{Visible: []string{"main", "sandbox"}, Current: "sandbox"}
+	if err := s.SetCatalogs("dev", want); err != nil {
+		t.Fatal(err)
+	}
+	// Saving scratchpad state leaves catalog preferences alone.
+	if err := s.SetSQL("dev", SQLState{WarehouseID: "abc"}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.Catalogs("dev")
+	if len(got.Visible) != 2 || got.Visible[1] != "sandbox" || got.Current != "sandbox" {
+		t.Fatalf("got %+v", got)
+	}
+	if err := s.Forget("dev"); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.Catalogs("dev"); len(got.Visible) != 0 || got.Current != "" {
+		t.Fatalf("after forget: %+v", got)
+	}
+}

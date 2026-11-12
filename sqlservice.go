@@ -259,6 +259,33 @@ func (s *SQLService) ListCatalogs(profile string) ([]string, error) {
 	return names, nil
 }
 
+// CatalogPrefs returns which catalogs the browser shows for a workspace and
+// which one was open last. An empty Visible list means all catalogs.
+func (s *SQLService) CatalogPrefs(profile string) (settings.CatalogPrefs, error) {
+	p, err := s.store.Catalogs(profile)
+	if p.Visible == nil {
+		p.Visible = []string{}
+	}
+	return p, err
+}
+
+// SaveCatalogPrefs remembers which catalogs to show and which one is open.
+func (s *SQLService) SaveCatalogPrefs(profile string, p settings.CatalogPrefs) error {
+	seen := map[string]bool{}
+	visible := make([]string, 0, len(p.Visible))
+	for _, name := range p.Visible {
+		name = strings.TrimSpace(name)
+		if name != "" && !seen[name] {
+			seen[name] = true
+			visible = append(visible, name)
+		}
+	}
+	sortFold(visible)
+	p.Visible = visible
+	p.Current = strings.TrimSpace(p.Current)
+	return s.store.SetCatalogs(profile, p)
+}
+
 // ListSchemas returns the schema names in a catalog, sorted.
 func (s *SQLService) ListSchemas(profile, catalogName string) ([]string, error) {
 	c, err := s.pool.get(profile)

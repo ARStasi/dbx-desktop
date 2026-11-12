@@ -19,7 +19,7 @@ Pillar 2, the SQL scratchpad, is built:
 - Open any `.sql` file from disk, or drop one on the window
 - Cmd/Ctrl+Enter runs the selection, or the statement under the cursor
 - Results grid capped at 10,000 rows, with CSV export
-- Unity Catalog tree with click-to-insert
+- Unity Catalog browser, one catalog at a time, with a filter, insert buttons, and a per-workspace choice of which catalogs to show
 - Warehouse picker with start and stop
 - Per-workspace history of the last 200 statements
 - Confirmation before destructive statements, and before any data-changing statement on a production workspace
@@ -57,7 +57,7 @@ DATABRICKS_CONFIG_FILE=/tmp/test.databrickscfg DBX_DESKTOP_CONFIG_DIR=/tmp/dbx-d
 | `workspaceservice.go` | The service the frontend calls: profiles, sign-in, overview |
 | `internal/dbcfg` | Reads and writes `~/.databrickscfg`, with a `.bak` backup on every write |
 | `internal/dbcli` | Finds the Databricks CLI and runs its browser login |
-| `internal/settings` | App-only metadata (color, nickname, production flag, default volume) and scratchpad state |
+| `internal/settings` | App-only metadata (color, nickname, production flag, default volume), scratchpad state, and catalog browser choices |
 | `sqlservice.go` | The service behind the SQL scratchpad |
 | `clients.go` | Per-profile Databricks API clients shared by the services |
 | `internal/sqlexec` | Runs one statement through the Statement Execution API |

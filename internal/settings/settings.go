@@ -27,13 +27,22 @@ type SQLState struct {
 	ActiveTab   string   `json:"activeTab"`
 }
 
+// CatalogPrefs is how the catalog browser is set up for one profile.
+type CatalogPrefs struct {
+	// Visible lists the catalogs to show. Empty means all of them.
+	Visible []string `json:"visible,omitempty"`
+	// Current is the catalog that was open last.
+	Current string `json:"current,omitempty"`
+}
+
 type data struct {
 	Active     string                   `json:"active"`
 	Workspaces map[string]WorkspaceMeta `json:"workspaces"`
 	// QueriesDir is the folder new query files are created in. Empty means
 	// the default, Documents/dbx-desktop.
-	QueriesDir string              `json:"queriesDir,omitempty"`
-	SQL        map[string]SQLState `json:"sql,omitempty"`
+	QueriesDir string                  `json:"queriesDir,omitempty"`
+	SQL        map[string]SQLState     `json:"sql,omitempty"`
+	Catalogs   map[string]CatalogPrefs `json:"catalogs,omitempty"`
 }
 
 // Store is a JSON file in the per-user config folder.
@@ -60,7 +69,7 @@ func DefaultPath() (string, error) {
 func New(path string) *Store { return &Store{path: path} }
 
 func (s *Store) read() (data, error) {
-	d := data{Workspaces: map[string]WorkspaceMeta{}, SQL: map[string]SQLState{}}
+	d := data{Workspaces: map[string]WorkspaceMeta{}, SQL: map[string]SQLState{}, Catalogs: map[string]CatalogPrefs{}}
 	b, err := os.ReadFile(s.path)
 	if errors.Is(err, os.ErrNotExist) {
 		return d, nil
@@ -76,6 +85,9 @@ func (s *Store) read() (data, error) {
 	}
 	if d.SQL == nil {
 		d.SQL = map[string]SQLState{}
+	}
+	if d.Catalogs == nil {
+		d.Catalogs = map[string]CatalogPrefs{}
 	}
 	return d, nil
 }
@@ -140,6 +152,7 @@ func (s *Store) Forget(profile string) error {
 	}
 	delete(d.Workspaces, profile)
 	delete(d.SQL, profile)
+	delete(d.Catalogs, profile)
 	if d.Active == profile {
 		d.Active = ""
 	}
@@ -164,5 +177,29 @@ func (s *Store) SetSQL(profile string, st SQLState) error {
 		return err
 	}
 	d.SQL[profile] = st
+	return s.write(d)
+}
+
+// Catalogs returns the catalog browser preferences for a profile.
+func (s *Store) Catalogs(profile string) (CatalogPrefs, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	d, err := s.read()
+	return d.Catalogs[profile], err
+}
+
+// SetCatalogs saves the catalog browser preferences for a profile.
+func (s *Store) SetCatalogs(profile string, p CatalogPrefs) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	d, err := s.read()
+	if err != nil {
+		return err
+	}
+	if len(p.Visible) == 0 && p.Current == "" {
+		delete(d.Catalogs, profile)
+	} else {
+		d.Catalogs[profile] = p
+	}
 	return s.write(d)
 }

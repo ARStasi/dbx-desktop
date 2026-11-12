@@ -16,6 +16,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as queries$0 from "./internal/queries/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as settings$0 from "./internal/settings/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as sqlexec$0 from "./internal/sqlexec/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -27,6 +30,14 @@ import * as $models from "./models.js";
  */
 export function CancelQuery(runID: string): $CancellablePromise<void> {
     return $Call.ByID(1548044325, runID);
+}
+
+/**
+ * CatalogPrefs returns which catalogs the browser shows for a workspace and
+ * which one was open last. An empty Visible list means all catalogs.
+ */
+export function CatalogPrefs(profile: string): $CancellablePromise<settings$0.CatalogPrefs> {
+    return $Call.ByID(3738200078, profile);
 }
 
 /**
@@ -106,6 +117,13 @@ export function RenameQueryFile(path: string, newName: string): $CancellableProm
  */
 export function RunQuery(profile: string, warehouseID: string, statement: string, runID: string): $CancellablePromise<sqlexec$0.Result> {
     return $Call.ByID(2947723058, profile, warehouseID, statement, runID);
+}
+
+/**
+ * SaveCatalogPrefs remembers which catalogs to show and which one is open.
+ */
+export function SaveCatalogPrefs(profile: string, p: settings$0.CatalogPrefs): $CancellablePromise<void> {
+    return $Call.ByID(3141726543, profile, p);
 }
 
 /**
